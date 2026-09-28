@@ -57,7 +57,15 @@ def create_app() -> FastAPI:
     # CORS configuration (SEC-003, DEP-001)
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.CORS_ORIGIN, "http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_origins=[
+            settings.CORS_ORIGIN,
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -74,8 +82,19 @@ def create_app() -> FastAPI:
     application.include_router(memory.router, prefix=settings.API_PREFIX)
     application.include_router(runbooks.router, prefix=settings.API_PREFIX)
     application.include_router(health.router, prefix=settings.API_PREFIX)
+    from src.api.routes import frontend_compat
+    application.include_router(frontend_compat.router, prefix=settings.API_PREFIX)
+
+    # 4. Mount Frontend Production Single-Page App if built
+    from pathlib import Path
+    from fastapi.staticfiles import StaticFiles
+    dist_dir = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+    if dist_dir.exists():
+        application.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="static_frontend")
 
     return application
+
+
 
 
 app = create_app()

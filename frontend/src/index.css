@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #101419;
+  --color-surface-dim: #101419;
+  --color-surface-bright: #36393f;
+  --color-surface-container-lowest: #0b0e13;
+  --color-surface-container-low: #181c21;
+  --color-surface-container: #1d2025;
+  --color-surface-container-high: #272a30;
+  --color-surface-container-highest: #32353b;
+  --color-on-surface: #e0e2ea;
+  --color-on-surface-variant: #b9cacb;
+  --color-inverse-surface: #e0e2ea;
+  --color-inverse-on-surface: #2d3036;
+  --color-outline: #849495;
+  --color-outline-variant: #3b494b;
+  --color-surface-tint: #00dbe9;
+  --color-primary: #dbfcff;
+  --color-on-primary: #00363a;
+  --color-primary-container: #00f0ff;
+  --color-on-primary-container: #006970;
+  --color-inverse-primary: #006970;
+  --color-secondary: #7bd0ff;
+  --color-on-secondary: #00354a;
+  --color-secondary-container: #00a6e0;
+  --color-on-secondary-container: #00374d;
+  --color-tertiary: #d3fff7;
+  --color-on-tertiary: #003732;
+  --color-tertiary-container: #7fecde;
+  --color-on-tertiary-container: #006b62;
+  --color-error: #ffb4ab;
+  --color-on-error: #690005;
+  --color-error-container: #93000a;
+  --color-on-error-container: #ffdad6;
+  --color-primary-fixed: #7df4ff;
+  --color-primary-fixed-dim: #00dbe9;
+  --color-on-primary-fixed: #002022;
+  --color-on-primary-fixed-variant: #004f54;
+  --color-secondary-fixed: #c4e7ff;
+  --color-secondary-fixed-dim: #7bd0ff;
+  --color-on-secondary-fixed: #001e2c;
+  --color-on-secondary-fixed-variant: #004c69;
+  --color-tertiary-fixed: #89f5e7;
+  --color-tertiary-fixed-dim: #6bd8cb;
+  --color-on-tertiary-fixed: #00201d;
+  --color-on-tertiary-fixed-variant: #005049;
+  --color-background: #101419;
+  --color-on-background: #e0e2ea;
+  --color-surface-variant: #32353b;
+
+  --font-headline-md: "Inter", sans-serif;
+  --font-metric-number: "JetBrains Mono", monospace;
+  --font-headline-sm: "Inter", sans-serif;
+  --font-display-lg: "Inter", sans-serif;
+  --font-code-sm: "JetBrains Mono", monospace;
+  --font-headline-lg: "Inter", sans-serif;
+  --font-body-base: "Inter", sans-serif;
+  --font-code-md: "JetBrains Mono", monospace;
+  --font-body-medium: "Inter", sans-serif;
+  --font-label-caps: "JetBrains Mono", monospace;
+  --font-code-lg: "JetBrains Mono", monospace;
+  --font-body-sm: "Inter", sans-serif;
+  --font-display-lg-mobile: "Inter", sans-serif;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    overscroll-behavior: none;
+    font-family: 'Inter', sans-serif;
+  }
+  /* Custom sleek scrollbars for tactical engineering dashboard */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0b0e13;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #272a30;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3b494b;
+  }
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+@keyframes sweep {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  35% {
+    opacity: 0.9;
+  }
+  70% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+.animate-sweep {
+  animation: sweep 1.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+

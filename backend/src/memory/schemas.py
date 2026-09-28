@@ -222,6 +222,12 @@ class RecallResult(BaseModel):
     recall_record: Optional[RecallRecord] = None
     degraded_reason: Optional[str] = None
     error_code: Optional[str] = None
+    status: Optional[str] = None
+    memory: Optional[Dict[str, Any]] = None
+    similarityScore: Optional[float] = None
+    relevance: Optional[str] = None
+    whyRecalled: Optional[Dict[str, Any]] = None
+    provenance: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -233,7 +239,14 @@ class RecallResult(BaseModel):
             "recall_record": self.recall_record.to_dict() if self.recall_record else None,
             "degraded_reason": self.degraded_reason,
             "error_code": self.error_code,
+            "status": self.status,
+            "memory": self.memory,
+            "similarityScore": self.similarityScore,
+            "relevance": self.relevance,
+            "whyRecalled": self.whyRecalled,
+            "provenance": self.provenance,
         }
+
 
 
 class RetainRequest(BaseModel):

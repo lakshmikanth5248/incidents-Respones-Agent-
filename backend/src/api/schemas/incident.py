@@ -4,7 +4,7 @@ Conforms to PRD §12.2 (API-001, API-002, API-003, API-004), BE-015 error model,
 """
 
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 class ErrorDetail(BaseModel):
@@ -19,12 +19,33 @@ class ErrorResponse(BaseModel):
 
 
 class IncidentCreateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
-    symptom_description: str = Field(
-        ...,
+    symptom_description: Optional[str] = Field(
+        default=None,
         description="Free-form text describing observed symptoms (required)"
     )
+    title: Optional[str] = Field(
+        default=None,
+        description="Optional title or summary of the incident"
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Optional description"
+    )
+    affectedServices: Optional[List[str]] = None
+    observedSymptoms: Optional[List[str]] = None
+    recentDeployments: Optional[List[Any]] = None
+    isDemo: Optional[bool] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_symptom_from_title_or_desc(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if not data.get("symptom_description"):
+                data["symptom_description"] = data.get("description") or data.get("title")
+        return data
+
     service: Optional[str] = Field(
         default=None,
         description="Optional affected service name (e.g., payment-api)"
@@ -61,6 +82,7 @@ class IncidentCreateRequest(BaseModel):
         default=False,
         description="Whether this incident is part of synthetic demo corpus (DM-015)"
     )
+
 
 
 class IncidentPatchRequest(BaseModel):
@@ -143,13 +165,41 @@ class IncidentResponse(BaseModel):
     postmortem_status: str = "none"
     verification_status: str = "unverified"
     analysis_id: Optional[str] = None
+    incident: Optional[Dict[str, Any]] = None
+    incident_number: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_compat_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if not data.get("incident_number"):
+                data["incident_number"] = data.get("id", "").replace("inc-", "INC-").upper()
+            if not data.get("title"):
+                data["title"] = data.get("raw_symptom_description", "")[:80]
+            if not data.get("description"):
+                data["description"] = data.get("raw_symptom_description", "")
+            if not data.get("incident"):
+                data["incident"] = {k: v for k, v in data.items() if k != "incident"}
+        return data
 
 
 class IncidentListResponse(BaseModel):
     incidents: List[IncidentResponse]
     total: int
+    count: Optional[int] = None
     limit: int
     offset: int
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_count(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "count" not in data or data["count"] is None:
+                data["count"] = data.get("total", len(data.get("incidents", [])))
+        return data
+
 
 
 class AuditEventResponse(BaseModel):

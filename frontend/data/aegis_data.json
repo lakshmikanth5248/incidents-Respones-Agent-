@@ -1,0 +1,462 @@
+{
+  "users": [
+    {
+      "id": "user-admin-01",
+      "name": "D. Mercer (Lead SRE)",
+      "email": "admin@aegis.corp",
+      "password_hash": "$2b$10$R7LdXdnQpIe8VNCUJAPTh.l6CkSymmTMQyNc/CCtSHkJJgbSU.cSS",
+      "role": "ADMIN",
+      "avatar_url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=128&q=80",
+      "created_at": "2026-09-28T10:55:23.629Z",
+      "updated_at": "2026-09-28T17:48:16.747Z",
+      "last_login_at": "2026-09-28T17:48:16.747Z",
+      "is_active": true,
+      "roles": [
+        "ADMIN",
+        "RESPONDER",
+        "ANALYST",
+        "VIEWER"
+      ],
+      "permissions": {
+        "incidents": true,
+        "investigation": true,
+        "memory": true,
+        "ai_analysis": true,
+        "operations": true,
+        "analytics": true,
+        "audit": true,
+        "settings": true,
+        "admin": true
+      }
+    },
+    {
+      "id": "user-responder-02",
+      "name": "Alex Vance (Incident Responder)",
+      "email": "responder@aegis.corp",
+      "password_hash": "$2b$10$E/EGHrl240c5wUm49tFwAe6J7ZqG6AbLbFpMohS8XrzjV14ahbtiu",
+      "role": "RESPONDER",
+      "avatar_url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=128&q=80",
+      "created_at": "2026-09-28T10:55:23.629Z",
+      "updated_at": "2026-09-28T10:55:23.629Z",
+      "last_login_at": null,
+      "is_active": true,
+      "roles": [
+        "RESPONDER"
+      ],
+      "permissions": {
+        "incidents": true,
+        "investigation": true,
+        "memory": true,
+        "ai_analysis": true,
+        "operations": true,
+        "analytics": true,
+        "audit": true,
+        "settings": false,
+        "admin": false
+      }
+    },
+    {
+      "id": "user-viewer-03",
+      "name": "Sarah Chen (Platform Observer)",
+      "email": "viewer@aegis.corp",
+      "password_hash": "$2b$10$6zPnFJcGUek9P1x7/lODAeKBrCeDLJY9sjBcVGQOucEHokF8xoGO6",
+      "role": "VIEWER",
+      "avatar_url": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=128&q=80",
+      "created_at": "2026-09-28T10:55:23.629Z",
+      "updated_at": "2026-09-28T10:55:23.629Z",
+      "last_login_at": null,
+      "is_active": true,
+      "roles": [
+        "VIEWER"
+      ],
+      "permissions": {
+        "incidents": true,
+        "investigation": true,
+        "memory": true,
+        "ai_analysis": false,
+        "operations": false,
+        "analytics": true,
+        "audit": false,
+        "settings": false,
+        "admin": false
+      }
+    }
+  ],
+  "incidents": [
+    {
+      "id": "inc-2048",
+      "incident_number": "INC-2048",
+      "title": "Payment Gateway Timeout Cascade & Thread Exhaustion",
+      "description": "Intermittent 504 Gateway Timeouts on /v2/checkout/charge. Blast radius verified isolated to North America region downstream ingress.",
+      "severity": "SEV-1",
+      "status": "INVESTIGATING",
+      "service": "Checkout API / Payment Gateway",
+      "environment": "production-iad01",
+      "detected_at": "2026-09-28T10:36:41.630Z",
+      "resolved_at": null,
+      "created_by": "system-otel-monitor",
+      "assigned_to": "D. Mercer (Lead SRE)",
+      "current_hypothesis": "Current evidence + prior experience suggest upstream payment partner throttling rather than internal deployment regression.",
+      "impact_summary": "Degraded checkout purchases for ~14% of North America traffic",
+      "is_demo": true,
+      "created_at": "2026-09-28T10:36:41.630Z",
+      "updated_at": "2026-09-28T10:55:23.630Z"
+    },
+    {
+      "id": "inc-2045",
+      "incident_number": "INC-2045",
+      "title": "Cart Sync Flapping under High Traffic Surge",
+      "description": "Redis cluster cache key eviction induced CPU spike on order sync workers.",
+      "severity": "SEV-2",
+      "status": "RESOLVED",
+      "service": "Cart Sync Worker",
+      "environment": "production-fra01",
+      "detected_at": "2026-09-28T06:55:23.630Z",
+      "resolved_at": "2026-09-28T07:55:23.630Z",
+      "created_by": "system-otel-monitor",
+      "assigned_to": "Alex Vance",
+      "current_hypothesis": "Redis protocol bump leaked persistent connection handles.",
+      "impact_summary": "Cart latency elevated for 18 minutes",
+      "is_demo": true,
+      "created_at": "2026-09-28T06:55:23.630Z",
+      "updated_at": "2026-09-28T07:55:23.630Z"
+    }
+  ],
+  "incident_events": [
+    {
+      "id": "evt-1",
+      "incident_id": "inc-2048",
+      "event_type": "INCIDENT_CREATED",
+      "message": "Incident detected via OpenTelemetry automated threshold trigger on /v2/checkout/charge",
+      "source": "TELEMETRY",
+      "metadata": {
+        "initial_latency_ms": 4820,
+        "error_code": 504
+      },
+      "created_at": "2026-09-28T10:36:41.630Z",
+      "created_by": "system-otel-monitor"
+    },
+    {
+      "id": "evt-2",
+      "incident_id": "inc-2048",
+      "event_type": "CONTEXT_COLLECTED",
+      "message": "12 error signatures, 4 service graphs, 2 deployment manifests aggregated from OpenTelemetry pipeline",
+      "source": "AGENT",
+      "metadata": {
+        "recent_deploy": "stripe-connector v2.14.0"
+      },
+      "created_at": "2026-09-28T10:38:23.630Z",
+      "created_by": "Aegis-Agent-v4"
+    },
+    {
+      "id": "evt-3",
+      "incident_id": "inc-2048",
+      "event_type": "MEMORY_RECALLED",
+      "message": "Hindsight query executed across 14,892 historical incident embeddings. Precedent INC-1987 identified.",
+      "source": "HINDSIGHT",
+      "metadata": {
+        "precedent_id": "INC-1987",
+        "similarity": 0.914
+      },
+      "created_at": "2026-09-28T10:39:23.630Z",
+      "created_by": "HyperGraph-v4.9"
+    },
+    {
+      "id": "evt-4",
+      "incident_id": "inc-2048",
+      "event_type": "HYPOTHESIS_GENERATED",
+      "message": "Hypothesis formed: Upstream partner throttling rather than internal release regression.",
+      "source": "AGENT",
+      "metadata": {
+        "confidence": "MODERATE"
+      },
+      "created_at": "2026-09-28T10:40:23.630Z",
+      "created_by": "Aegis-Agent-v4"
+    },
+    {
+      "id": "evt-5",
+      "incident_id": "inc-2048",
+      "event_type": "RESPONSE_RECOMMENDED",
+      "message": "Staged 3-action response plan grounded in INC-1987 runbook precedent.",
+      "source": "AGENT",
+      "metadata": {
+        "actions_count": 3
+      },
+      "created_at": "2026-09-28T10:41:23.630Z",
+      "created_by": "Aegis-Agent-v4"
+    },
+    {
+      "id": "evt-c942d516-9431-4f10-9d0c-baa1eab2280c",
+      "incident_id": "inc-inc-4544",
+      "event_type": "INCIDENT_CREATED",
+      "message": "Incident INC-4544 registered: Cold-start: Edge Proxy Read Socket Timeouts",
+      "source": "SRE_OPERATOR",
+      "metadata": {
+        "severity": "SEV-1",
+        "service": "Payment Gateway Proxy"
+      },
+      "created_at": "2026-09-28T11:20:07.047Z",
+      "created_by": "demo-system"
+    }
+  ],
+  "incident_signals": [
+    {
+      "id": "sig-1",
+      "incident_id": "inc-2048",
+      "signal_type": "latency",
+      "name": "P99 Latency (Checkout API)",
+      "value": 4820,
+      "unit": "ms",
+      "severity": "CRITICAL",
+      "observed_at": "2026-09-28T10:55:23.630Z"
+    },
+    {
+      "id": "sig-2",
+      "incident_id": "inc-2048",
+      "signal_type": "error_rate",
+      "name": "504 Gateway Timeout Rate",
+      "value": 14.2,
+      "unit": "%",
+      "severity": "HIGH",
+      "observed_at": "2026-09-28T10:55:23.630Z"
+    },
+    {
+      "id": "sig-3",
+      "incident_id": "inc-2048",
+      "signal_type": "pool_saturation",
+      "name": "Socket Pool Connection Saturation",
+      "value": 480,
+      "unit": "connections",
+      "severity": "CRITICAL",
+      "observed_at": "2026-09-28T10:55:23.630Z"
+    },
+    {
+      "id": "sig-4",
+      "incident_id": "inc-2048",
+      "signal_type": "gateway_timeout",
+      "name": "Upstream Stripe Proxy Read Timeout",
+      "value": 1420,
+      "unit": "req/min",
+      "severity": "HIGH",
+      "observed_at": "2026-09-28T10:55:23.630Z"
+    }
+  ],
+  "memories": [
+    {
+      "id": "mem-1987",
+      "external_memory_id": "HINDSIGHT-EXP-1987",
+      "incident_id": "INC-1987",
+      "title": "Payment Gateway Timeout Cascade & Thread Exhaustion",
+      "summary": "Upstream card processor suffered degraded network route, inducing thread blocking across core checkout pods.",
+      "memory_type": "INCIDENT_RUNBOOK",
+      "status": "RELEVANT",
+      "source": "OpenTelemetry + WarRoom Transcript",
+      "retained_at": "2024-08-14T16:30:00.000Z",
+      "last_recalled_at": "2026-09-28T14:04:15.000Z",
+      "recall_count": 8,
+      "is_demo": true,
+      "created_at": "2024-08-14T16:30:00.000Z",
+      "updated_at": "2026-09-28T14:04:15.000Z",
+      "what_happened": "Upstream card processor suffered degraded network route, inducing thread blocking across core checkout pods.",
+      "agent_investigation": "AI Agent identified socket timeouts mimicking internal database locks; correlated with 3rd-party status page telemetry.",
+      "executed_response": "Switched fallback payment gateway and dropped synchronous webhook retries to unbind worker threads.",
+      "verified_outcome": "Full checkout path restored (MTTR: 11 min); zero transaction loss recorded during re-routing phase.",
+      "retained_experience_rule": "When socket timeouts spike on payment proxy without internal CPU spikes, inspect upstream third-party status before rolling back application releases.",
+      "utility_score": 96,
+      "domain": "Payment & Billing",
+      "coords3D": [
+        -32,
+        16,
+        6
+      ]
+    },
+    {
+      "id": "mem-1842",
+      "external_memory_id": "HINDSIGHT-EXP-1842",
+      "incident_id": "INC-1842",
+      "title": "Redis Connection Surge post-Redis 7 Upgrade",
+      "summary": "Redis connection limit reached due to incorrect pool cleanup settings after protocol bump.",
+      "memory_type": "INFRASTRUCTURE_FAILURE",
+      "status": "PARTIAL",
+      "source": "Kernel dmesg + Helm logs",
+      "retained_at": "2024-05-22T11:15:00.000Z",
+      "last_recalled_at": null,
+      "recall_count": 4,
+      "is_demo": true,
+      "created_at": "2024-05-22T11:15:00.000Z",
+      "updated_at": "2024-05-22T11:15:00.000Z",
+      "what_happened": "Redis connection limit reached due to incorrect pool cleanup settings after engine bump.",
+      "agent_investigation": "Discovered leak in persistent TCP connection handles across 18 worker pods.",
+      "executed_response": "Flushed idle sockets and capped max pool connection size via Helm values.",
+      "verified_outcome": "Cluster load dropped to 14% nominal with no cache evictions (MTTR: 19 min).",
+      "retained_experience_rule": "Cap persistent idle connection pool sizes when deploying major Redis protocol bumps.",
+      "utility_score": 88,
+      "domain": "Database & Storage",
+      "coords3D": [
+        30,
+        18,
+        -4
+      ]
+    },
+    {
+      "id": "mem-1721",
+      "external_memory_id": "HINDSIGHT-EXP-1721",
+      "incident_id": "INC-1721",
+      "title": "OAuth Token Revocation Thundering Herd",
+      "summary": "Coordinated key rotation expired 850,000 active tokens simultaneously, overwhelming auth workers.",
+      "memory_type": "IAM_CASCADE",
+      "status": "RELEVANT",
+      "source": "Kong API Gateway Traces",
+      "retained_at": "2024-03-09T08:00:00.000Z",
+      "last_recalled_at": null,
+      "recall_count": 12,
+      "is_demo": true,
+      "created_at": "2024-03-09T08:00:00.000Z",
+      "updated_at": "2024-03-09T08:00:00.000Z",
+      "what_happened": "Coordinated key rotation expired 850,000 active tokens simultaneously, overwhelming auth workers.",
+      "agent_investigation": "Trace analysis proved 98% of auth workers were blocked waiting for JWKS RSA key validation.",
+      "executed_response": "Applied dynamic token cache TTL extension with exponential randomized backoff.",
+      "verified_outcome": "Auth latency returned to under 8ms within 4 minutes (MTTR: 8 min).",
+      "retained_experience_rule": "Enforce jittered token expiration backoffs and fallback to read-only stale grants under load.",
+      "utility_score": 94,
+      "domain": "Authentication & IAM",
+      "coords3D": [
+        -24,
+        -5,
+        -28
+      ]
+    },
+    {
+      "id": "mem-1590",
+      "external_memory_id": "HINDSIGHT-EXP-1590",
+      "incident_id": "INC-1590",
+      "title": "DNS Resolution Flapping in Kubernetes CoreDNS",
+      "summary": "Node conntrack saturation caused intermittent UDP DNS packet drop for internal mesh services.",
+      "memory_type": "NETWORK_MESH",
+      "status": "RELEVANT",
+      "source": "eBPF CoreDNS metrics",
+      "retained_at": "2023-11-17T14:40:00.000Z",
+      "last_recalled_at": null,
+      "recall_count": 9,
+      "is_demo": true,
+      "created_at": "2023-11-17T14:40:00.000Z",
+      "updated_at": "2023-11-17T14:40:00.000Z",
+      "what_happened": "Node conntrack saturation caused intermittent UDP DNS packet drop for internal mesh services.",
+      "agent_investigation": "Linux kernel packet drops pinpointed to max conntrack limits on high-density nodes.",
+      "executed_response": "Enabled NodeLocal DNSCache DaemonSet and doubled nf_conntrack_max sysctl.",
+      "verified_outcome": "Zero dropped DNS queries across 34 nodes (MTTR: 24 min).",
+      "retained_experience_rule": "Scale node-local DNS caches before altering worker node egress CIDR ranges.",
+      "utility_score": 91,
+      "domain": "Network & Mesh",
+      "coords3D": [
+        28,
+        -6,
+        26
+      ]
+    }
+  ],
+  "memory_recalls": [],
+  "hypotheses": [],
+  "response_plans": [
+    {
+      "id": "plan-2048",
+      "incident_id": "inc-2048",
+      "title": "Grounded Incident Triage Plan (INC-1987 Grounded)",
+      "description": "Failover non-critical payment traffic, clamp socket timeout, and cycle saturated worker connection pool.",
+      "reason": "Prevents thread pool exhaustion while keeping payment transaction flow alive.",
+      "evidence": "INC-1987 recovered within 11 minutes with 0 transaction loss via 50/50 fallback split.",
+      "status": "PENDING_APPROVAL",
+      "created_by": "Aegis-Agent-v4",
+      "approved_by": null,
+      "approved_at": null,
+      "created_at": "2026-09-28T10:41:23.630Z",
+      "actions": [
+        {
+          "id": "act-1",
+          "stepNumber": 1,
+          "title": "Failover 50% non-critical traffic to secondary gateway",
+          "description": "Reroutes non-instant checkout transactions to Adyen backup processor to relieve Stripe proxy thread pressure.",
+          "riskLevel": "SAFE",
+          "status": "READY",
+          "targetComponent": "payment-gw-proxy-iad",
+          "commandSnippet": "kubectl patch configmap gateway-route --type merge -p '{\"data\":{\"stripe_weight\":\"50\",\"adyen_weight\":\"50\"}}'"
+        },
+        {
+          "id": "act-2",
+          "stepNumber": 2,
+          "title": "Enforce 1500ms timeout clamp",
+          "description": "Reduces client HTTP read socket timeout from 5000ms to 1500ms to rapidly fail backlogged requests and preserve worker thread pool.",
+          "riskLevel": "MITIGATE",
+          "status": "READY",
+          "targetComponent": "checkout-api",
+          "commandSnippet": "istioctl route-rule apply --service checkout-api --timeout 1500ms"
+        },
+        {
+          "id": "act-3",
+          "stepNumber": 3,
+          "title": "Isolate db-pool-worker-04 connection pool",
+          "description": "Terminates stuck JDBC connections and recycles container connection pool worker 04 to prevent cascading thread pool starvation.",
+          "riskLevel": "CRITICAL",
+          "status": "READY",
+          "targetComponent": "db-pool-worker-04",
+          "commandSnippet": "kubectl exec -it checkout-api-pod-84f9 -- recycle-pool --worker=db-pool-worker-04 --force"
+        }
+      ]
+    }
+  ],
+  "audit_logs": [
+    {
+      "id": "audit-9533964a-f102-4cbf-be8c-eb190b0d034b",
+      "user_id": "user-admin-01",
+      "incident_id": null,
+      "action": "USER_LOGIN",
+      "entity_type": "USER",
+      "entity_id": "user-admin-01",
+      "metadata": {},
+      "ip_address": "127.0.0.1",
+      "created_at": "2026-09-28T17:48:16.755Z"
+    },
+    {
+      "id": "audit-fdb293ba-ecf5-4f70-9a42-54342c61ea93",
+      "user_id": null,
+      "incident_id": "inc-inc-4544",
+      "action": "INCIDENT_CREATED",
+      "entity_type": "INCIDENT",
+      "entity_id": "inc-inc-4544",
+      "metadata": {
+        "incident_number": "INC-4544",
+        "title": "Cold-start: Edge Proxy Read Socket Timeouts"
+      },
+      "ip_address": "127.0.0.1",
+      "created_at": "2026-09-28T11:20:07.047Z"
+    },
+    {
+      "id": "audit-b5760d98-b644-4bf0-b449-7b0165a0a249",
+      "user_id": "user-admin-01",
+      "incident_id": null,
+      "action": "USER_LOGIN",
+      "entity_type": "USER",
+      "entity_id": "user-admin-01",
+      "metadata": {},
+      "ip_address": "127.0.0.1",
+      "created_at": "2026-09-28T11:03:13.126Z"
+    }
+  ],
+  "post_mortems": [
+    {
+      "id": "pm-2048",
+      "incident_id": "inc-2048",
+      "summary": "Checkout API experienced 504 timeouts due to upstream Stripe gateway route degradation.",
+      "impact": "14.2% error rate on /v2/checkout/charge in North America region for ~18m.",
+      "timeline": "13:45 Canary Deploy -> 14:02 First 504 alert -> 14:03 Context & Memory Recall -> 14:06 Plan Staged.",
+      "root_cause": "Third-party acquiring bank route degradation causing read socket timeouts exceeding 5000ms.",
+      "investigation": "AI Agent correlated absence of internal CPU spikes with external status page latency telemetry.",
+      "response_summary": "Traffic shaper failover 50% non-critical traffic to Adyen backup processor.",
+      "outcome": "Checkout transactions restored; zero transaction drop recorded during failover.",
+      "lessons_learned": "Upstream health checks must precede container restarts to avoid thread stampedes.",
+      "retained_experience": "When socket timeouts spike on payment proxy without internal CPU spikes, inspect upstream third-party status before rolling back application releases.",
+      "created_at": "2026-09-28T10:55:23.630Z",
+      "updated_at": "2026-09-28T10:55:23.630Z"
+    }
+  ]
+}

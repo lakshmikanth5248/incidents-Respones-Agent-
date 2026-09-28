@@ -188,9 +188,21 @@ class ValidationService:
         if severity is None:
             return "unknown"
         val = severity.lower().strip()
+        sev_map = {
+            "sev-1": "critical",
+            "sev-2": "high",
+            "sev-3": "medium",
+            "sev-4": "low",
+            "sev1": "critical",
+            "sev2": "high",
+            "sev3": "medium",
+            "sev4": "low",
+        }
+        val = sev_map.get(val, val)
         if val not in VALID_SEVERITIES:
             raise ValueError(f"INVALID_ENUM_VALUE: Severity must be one of {sorted(list(VALID_SEVERITIES))}, got '{severity}'.")
         return val
+
 
     @classmethod
     def validate_environment(cls, environment: Optional[str]) -> str:
