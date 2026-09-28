@@ -1,0 +1,6 @@
+{
+  "name": "Aegis Command - AI Incident Response & Hindsight Engine",
+  "description": "Tactical SRE Incident Response and Hindsight Knowledge Constellation engine for live telemetry triage, blast radius mapping, and verified runbook precedent matching.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

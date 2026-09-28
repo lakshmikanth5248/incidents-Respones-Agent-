@@ -1,3 +1,13 @@
+<<<<<<< HEAD
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+=======
 # Python
 __pycache__/
 *.py[cod]
@@ -27,3 +37,4 @@ htmlcov/
 .idea/
 .vscode/
 *.swp
+>>>>>>> origin/krishna
