@@ -40,6 +40,70 @@ from src.memory.client import (
 )
 from src.memory.test_double import HindsightTestDouble
 
+def _parse_memory_item(item: Dict[str, Any], default_service: Optional[str] = None) -> MemoryEntry:
+    """Normalize raw memory item from either live Hindsight API or HindsightTestDouble."""
+    flag_data = item.get("flagged")
+    flag_rec = None
+    if flag_data and isinstance(flag_data, dict):
+        flag_rec = FlagRecord(
+            flag_type=FlagType(flag_data["flag_type"]),
+            reason=flag_data.get("reason", ""),
+            note=flag_data.get("note"),
+            flagged_at=flag_data.get("flagged_at", ""),
+        )
+
+    tags = item.get("tags") or []
+    service_from_tag = None
+    component_from_tag = None
+    type_from_tag = None
+    outcome_from_tag = None
+    if isinstance(tags, list):
+        for t in tags:
+            if isinstance(t, str):
+                if t.startswith("service:"):
+                    service_from_tag = t.split(":", 1)[1]
+                elif t.startswith("component:"):
+                    component_from_tag = t.split(":", 1)[1]
+                elif t.startswith("type:"):
+                    type_from_tag = t.split(":", 1)[1]
+                elif t.startswith("outcome:"):
+                    outcome_from_tag = t.split(":", 1)[1]
+
+    body_content = str(item.get("body") or item.get("text") or item.get("content") or "")
+    detected_outcome = item.get("outcome_label") or outcome_from_tag
+    if not detected_outcome:
+        lower_body = body_content.lower()
+        if (
+            "successful mitigation" in lower_body
+            or "lag drained to zero" in lower_body
+            or "latency recovered" in lower_body
+            or "full recovery" in lower_body
+        ):
+            detected_outcome = OutcomeLabel.SUCCESSFUL.value
+        elif "failed mitigation" in lower_body:
+            detected_outcome = OutcomeLabel.INEFFECTIVE.value
+
+    return MemoryEntry(
+        entry_id=str(item.get("entry_id") or item.get("id")),
+        entry_type=str(item.get("entry_type") or type_from_tag or item.get("type") or "incident_experience"),
+        service=str(item.get("service") or service_from_tag or default_service or "unknown"),
+        component=item.get("component") or component_from_tag,
+        body=body_content,
+        outcome_label=detected_outcome,
+        confidence=item.get("confidence", "confirmed"),
+        source_incident_ref=str(
+            item.get("source_incident_ref")
+            or item.get("document_id")
+            or item.get("source_incident_id")
+            or "unknown"
+        ),
+        retained_at=item.get("retained_at") or item.get("mentioned_at"),
+        flagged=flag_rec,
+        provenance_group_id=item.get("provenance_group_id"),
+        is_synthetic=item.get("is_synthetic", True),
+        supersedes=item.get("supersedes"),
+    )
+
 
 class MemoryService:
     """
@@ -192,7 +256,7 @@ class MemoryService:
             )
 
         # 4. Normalize raw response entries into MemoryEntry objects
-        raw_memories = raw_response.get("memories", [])
+        raw_memories = raw_response.get("memories") or raw_response.get("results") or []
         if not raw_memories:
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.info("memory.recall_empty no_memories_found=true")
@@ -218,31 +282,7 @@ class MemoryService:
         normalized_entries: List[MemoryEntry] = []
         for item in raw_memories:
             try:
-                flag_data = item.get("flagged")
-                flag_rec = None
-                if flag_data and isinstance(flag_data, dict):
-                    flag_rec = FlagRecord(
-                        flag_type=FlagType(flag_data["flag_type"]),
-                        reason=flag_data.get("reason", ""),
-                        note=flag_data.get("note"),
-                        flagged_at=flag_data.get("flagged_at", ""),
-                    )
-
-                entry = MemoryEntry(
-                    entry_id=str(item.get("entry_id") or item.get("id")),
-                    entry_type=str(item.get("entry_type", "incident_experience")),
-                    service=str(item.get("service", scope["service"] or "unknown")),
-                    component=item.get("component"),
-                    body=str(item.get("body") or item.get("content", "")),
-                    outcome_label=item.get("outcome_label"),
-                    confidence=item.get("confidence", "confirmed"),
-                    source_incident_ref=str(item.get("source_incident_ref") or item.get("source_incident_id", "unknown")),
-                    retained_at=item.get("retained_at"),
-                    flagged=flag_rec,
-                    provenance_group_id=item.get("provenance_group_id"),
-                    is_synthetic=item.get("is_synthetic", True),
-                    supersedes=item.get("supersedes"),
-                )
+                entry = _parse_memory_item(item, default_service=scope["service"])
                 normalized_entries.append(entry)
             except Exception as parse_err:
                 logger.warning(f"memory.normalize_entry_failed error={str(parse_err)} item={item}")
@@ -499,31 +539,7 @@ class MemoryService:
             raw = self._client.get_experience(entry_id)
             if not raw:
                 return None
-            flag_data = raw.get("flagged")
-            flag_rec = None
-            if flag_data and isinstance(flag_data, dict):
-                flag_rec = FlagRecord(
-                    flag_type=FlagType(flag_data["flag_type"]),
-                    reason=flag_data.get("reason", ""),
-                    note=flag_data.get("note"),
-                    flagged_at=flag_data.get("flagged_at", ""),
-                )
-
-            return MemoryEntry(
-                entry_id=str(raw.get("entry_id") or raw.get("id")),
-                entry_type=str(raw.get("entry_type", "incident_experience")),
-                service=str(raw.get("service", "unknown")),
-                component=raw.get("component"),
-                body=str(raw.get("body") or raw.get("content", "")),
-                outcome_label=raw.get("outcome_label"),
-                confidence=raw.get("confidence", "confirmed"),
-                source_incident_ref=str(raw.get("source_incident_ref") or raw.get("source_incident_id", "unknown")),
-                retained_at=raw.get("retained_at"),
-                flagged=flag_rec,
-                provenance_group_id=raw.get("provenance_group_id"),
-                is_synthetic=raw.get("is_synthetic", True),
-                supersedes=raw.get("supersedes"),
-            )
+            return _parse_memory_item(raw)
         except (HindsightUnavailableError, HindsightTimeoutError, HindsightClientError) as exc:
             logger.error(f"memory.get_experience_unavailable id={entry_id} error={str(exc)}")
             raise APIException(
@@ -605,36 +621,12 @@ class MemoryService:
 
         try:
             res = self._client.recall(query=failure_mode_label or "", filters=filters, limit=limit)
-            memories = res.get("memories", [])
+            memories = res.get("memories") or res.get("results") or []
             entries: List[MemoryEntry] = []
             for item in memories:
                 if not include_flagged and item.get("flagged"):
                     continue
-                flag_data = item.get("flagged")
-                flag_rec = None
-                if flag_data and isinstance(flag_data, dict):
-                    flag_rec = FlagRecord(
-                        flag_type=FlagType(flag_data["flag_type"]),
-                        reason=flag_data.get("reason", ""),
-                        note=flag_data.get("note"),
-                        flagged_at=flag_data.get("flagged_at", ""),
-                    )
-
-                entries.append(MemoryEntry(
-                    entry_id=str(item.get("entry_id") or item.get("id")),
-                    entry_type=str(item.get("entry_type", "incident_experience")),
-                    service=str(item.get("service", "unknown")),
-                    component=item.get("component"),
-                    body=str(item.get("body") or item.get("content", "")),
-                    outcome_label=item.get("outcome_label"),
-                    confidence=item.get("confidence", "confirmed"),
-                    source_incident_ref=str(item.get("source_incident_ref") or item.get("source_incident_id", "unknown")),
-                    retained_at=item.get("retained_at"),
-                    flagged=flag_rec,
-                    provenance_group_id=item.get("provenance_group_id"),
-                    is_synthetic=item.get("is_synthetic", True),
-                    supersedes=item.get("supersedes"),
-                ))
+                entries.append(_parse_memory_item(item, default_service=service))
             return entries
         except (HindsightUnavailableError, HindsightTimeoutError, HindsightClientError) as exc:
             raise APIException(

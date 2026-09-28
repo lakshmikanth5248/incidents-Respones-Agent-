@@ -73,7 +73,7 @@ class Settings(BaseSettings):
         description="API key / Bearer token for Hindsight service"
     )
     HINDSIGHT_BANK_ID: str = Field(
-        default="incident-response-agent",
+        default="incident-response-bank",
         description="Hindsight memory bank / entity ID scope"
     )
     HINDSIGHT_TIMEOUT_SECONDS: float = Field(

@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # 1. Vectorize Hindsight Memory Engine (Biomimetic Memory Layer)
+  hindsight-engine:
+    build:
+      context: ./hindsight-engine
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+        RUN pip install --no-cache-dir uv
+        COPY pyproject.toml .
+        RUN uv pip install --system -e .
+        COPY . .
+        EXPOSE 8888
+        CMD ["python", "-m", "hindsight_api.main"]
+    ports:
+      - "8888:8888"
+    environment:
+      - HINDSIGHT_API_PORT=8888
+      - HINDSIGHT_API_DATABASE_URL=sqlite:///./hindsight.db
+      - HINDSIGHT_API_LLM_PROVIDER=openai
+      - HINDSIGHT_API_LLM_MODEL=gpt-4o-mini
+    volumes:
+      - hindsight-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # 2. Incident Response Agent Backend (FastAPI + Reasoning Layer)
+  backend:
+    build:
+      context: ./backend
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+        COPY requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt
+        COPY . .
+        EXPOSE 8000
+        CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=development
+      - DATABASE_URL=sqlite:///./incident_agent.db
+      - HINDSIGHT_ENDPOINT=http://hindsight-engine:8888
+      - HINDSIGHT_BANK_ID=incident-response-bank
+      - HINDSIGHT_USE_TEST_DOUBLE=false
+      - CORS_ORIGIN=http://localhost:3000
+    depends_on:
+      hindsight-engine:
+        condition: service_started
+
+  # 3. Incident Response Dashboard Frontend (React / Vite)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile_inline: |
+        FROM node:20-alpine
+        WORKDIR /app
+        COPY package.json bun.lock* ./
+        RUN npm install
+        COPY . .
+        EXPOSE 3000
+        CMD ["npm", "run", "dev", "--", "--host"]
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+
+  # 4. Hindsight Memory Control Plane (Next.js Memory Visualization)
+  hindsight-control-plane:
+    build:
+      context: ./hindsight-control-plane
+      dockerfile_inline: |
+        FROM node:20-alpine
+        WORKDIR /app
+        COPY package.json package-lock.json* ./
+        RUN npm install
+        COPY . .
+        EXPOSE 9999
+        CMD ["npx", "next", "dev", "-p", "9999"]
+    ports:
+      - "9999:9999"
+    environment:
+      - HINDSIGHT_API_URL=http://hindsight-engine:8888
+    depends_on:
+      - hindsight-engine
+
+volumes:
+  hindsight-data:
