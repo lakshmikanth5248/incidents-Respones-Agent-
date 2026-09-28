@@ -23,11 +23,13 @@ from src.api.schemas.incident import (
 )
 from src.api.schemas.analysis import AnalysisRequest, AnalysisResponse, RecommendationItem
 from src.api.schemas.resolution import ResolveIncidentRequest, ResolutionResponse
+from src.api.schemas.verification import VerificationRequest, VerificationResponse
 from src.api.errors import APIException
 from src.data.repositories.incident_repository import IncidentRepository
 from src.services.incident_service import IncidentService
 from src.services.analysis_service import AnalysisService
 from src.services.resolution_service import ResolutionService
+from src.services.verification_service import VerificationService
 from src.memory.service import memory_service
 from src.memory.schemas import RecallRequest, MemoryStatus
 
@@ -394,3 +396,63 @@ def get_incident_resolution(
         incident_status=incident.status if incident else "unknown",
         resolution_status=incident.resolution_status if incident else "resolved",
     )
+
+@router.post(
+    "/{id}/verify",
+    response_model=VerificationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Verify resolution outcome (Feature 10)",
+    description=(
+        "Verify what happened after the engineer's action. "
+        "Evaluates before/after telemetry, observations, and operator claims without manufacturing measurements."
+    ),
+)
+@router.post(
+    "/{id}/verification",
+    response_model=VerificationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Verify resolution outcome alias (Feature 10)",
+    include_in_schema=False,
+)
+def verify_incident_outcome(
+    id: str,
+    request: VerificationRequest,
+    x_operator: str = Header(None, alias="X-Operator"),
+    db: Session = Depends(get_db),
+) -> VerificationResponse:
+    """Verify outcome of resolution actions."""
+    actor = x_operator or "sre-verifier"
+    record = VerificationService.verify_incident(
+        db=db,
+        incident_id=id,
+        request=request,
+        actor=actor,
+    )
+    incident = IncidentRepository.get_by_id(db, id)
+    res_dict = record.to_dict()
+    return VerificationResponse(
+        **res_dict,
+        incident_status=incident.status if incident else "unknown",
+    )
+
+
+@router.get(
+    "/{id}/verification",
+    response_model=VerificationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get incident outcome verification record (Feature 10)",
+    description="Retrieve the verification record and evidence assessment for an incident.",
+)
+def get_incident_verification(
+    id: str,
+    db: Session = Depends(get_db),
+) -> VerificationResponse:
+    """Retrieve outcome verification record for an incident."""
+    record = VerificationService.get_verification(db=db, incident_id=id)
+    incident = IncidentRepository.get_by_id(db, id)
+    res_dict = record.to_dict()
+    return VerificationResponse(
+        **res_dict,
+        incident_status=incident.status if incident else "unknown",
+    )
+

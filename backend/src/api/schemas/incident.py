@@ -139,6 +139,7 @@ class IncidentResponse(BaseModel):
     memory_status: Optional[str] = None
     resolution_status: str = "unresolved"
     postmortem_status: str = "none"
+    verification_status: str = "unverified"
     analysis_id: Optional[str] = None
 
 

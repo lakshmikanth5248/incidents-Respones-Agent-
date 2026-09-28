@@ -2,5 +2,6 @@ from src.data.models.incident import Incident
 from src.data.models.audit import AuditEvent
 from src.data.models.analysis import IncidentAnalysis
 from src.data.models.resolution import ResolutionRecord
+from src.data.models.verification import VerificationRecord
 
-__all__ = ["Incident", "AuditEvent", "IncidentAnalysis", "ResolutionRecord"]
+__all__ = ["Incident", "AuditEvent", "IncidentAnalysis", "ResolutionRecord", "VerificationRecord"]

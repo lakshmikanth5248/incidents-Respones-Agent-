@@ -65,6 +65,7 @@ class Incident(Base):
     memory_status = Column(String(32), nullable=True)  # ok, empty, degraded, suppressed, or None
     resolution_status = Column(String(32), nullable=False, default="unresolved")  # unresolved, in_progress, resolved
     postmortem_status = Column(String(32), nullable=False, default="none")  # none, draft, confirmed
+    verification_status = Column(String(32), nullable=False, default="unverified")  # unverified, confirmed, inconclusive, failed, unknown
 
     # Reference reserved for Feature 3 & Feature 4
     analysis_id = Column(String(64), nullable=True)
@@ -101,6 +102,7 @@ class Incident(Base):
             "memory_status": self.memory_status,
             "resolution_status": self.resolution_status,
             "postmortem_status": self.postmortem_status,
+            "verification_status": self.verification_status,
             "analysis_id": self.analysis_id,
             "recall_record": self.recall_record,
         }
