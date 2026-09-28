@@ -18,7 +18,23 @@ from src.main import create_app
 from src.data.database import Base, get_db
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+def _is_hindsight_live() -> bool:
+    try:
+        client = HindsightClient(
+            base_url=settings.HINDSIGHT_ENDPOINT,
+            bank_id=settings.HINDSIGHT_BANK_ID,
+            timeout=1.0,
+            max_retries=0,
+        )
+        healthy, _ = client.health_check()
+        return healthy
+    except Exception:
+        return False
+
+pytestmark = pytest.mark.skipif(
+    not _is_hindsight_live(),
+    reason="Live Hindsight service on port 8888 is not running. Start it to run live tests."
+)
 
 
 def test_live_hindsight_health():
