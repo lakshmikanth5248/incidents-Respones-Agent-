@@ -32,9 +32,11 @@ class MemoryCandidateValidationError(ValueError):
 # Entry types that describe an action or procedure and therefore require an
 # outcome label (RP-012, HM-010).
 OUTCOME_REQUIRED_ENTRY_TYPES = {
+    "resolution",
     "resolution_procedure",
     "successful_action",
     "failed_action",
+    "failed_approach",
     "runbook_outcome",
 }
 

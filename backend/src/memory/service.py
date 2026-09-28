@@ -349,6 +349,7 @@ class MemoryService:
             "confidence": candidate.confidence,
             "source_incident_ref": candidate.source_incident_ref,
             "provenance_group_id": candidate.provenance_group_id,
+            "provenance": candidate.provenance or {},
             "is_synthetic": candidate.is_synthetic,
             "supersedes": candidate.supersedes,
         }

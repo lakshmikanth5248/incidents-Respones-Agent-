@@ -22,16 +22,19 @@ class MemoryStatus(str, Enum):
 
 
 class EntryType(str, Enum):
-    """Supported reusable fact entry types (PRD HM-001 - HM-013, DM-003)."""
+    """Supported reusable fact entry types (PRD HM-001 - HM-013, DM-003, FR-058, DM-005)."""
     INCIDENT_EXPERIENCE = "incident_experience"
     SYMPTOM_PROFILE = "symptom_profile"
     ROOT_CAUSE = "root_cause"
     CONTRIBUTING_FACTOR = "contributing_factor"
+    RESOLUTION = "resolution"
     RESOLUTION_PROCEDURE = "resolution_procedure"
     SUCCESSFUL_ACTION = "successful_action"
     FAILED_ACTION = "failed_action"
+    FAILED_APPROACH = "failed_approach"
     RUNBOOK_OUTCOME = "runbook_outcome"
     LESSON = "lesson"
+    PREVENTION = "prevention"
     PREVENTIVE_KNOWLEDGE = "preventive_knowledge"
     RECURRING_PATTERN = "recurring_pattern"
 
@@ -39,15 +42,18 @@ class EntryType(str, Enum):
 class OutcomeLabel(str, Enum):
     """Outcome qualification labels (PRD HM-010, RP-012)."""
     SUCCESSFUL = "successful"
+    EFFECTIVE = "effective"
     INEFFECTIVE = "ineffective"
     INCONCLUSIVE = "inconclusive"
     UNKNOWN = "unknown"
 
 
 class ConfidenceLevel(str, Enum):
-    """Confidence levels (PRD RP-011)."""
+    """Confidence levels (PRD RP-011, DM-005)."""
     CONFIRMED = "confirmed"
+    HIGH = "high"
     PROBABLE = "probable"
+    MEDIUM = "medium"
     LOW = "low"
 
 
@@ -134,6 +140,7 @@ class MemoryCandidate(BaseModel):
     confidence: str = ConfidenceLevel.CONFIRMED.value
     source_incident_ref: Optional[str] = None
     provenance_group_id: Optional[str] = None
+    provenance: Optional[Dict[str, Any]] = Field(default_factory=dict)
     is_synthetic: bool = True
     supersedes: Optional[str] = None
 

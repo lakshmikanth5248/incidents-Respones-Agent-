@@ -494,13 +494,18 @@ class PostMortemService:
             and postmortem.resolution.strip().lower() not in {"unknown", "none"}
             and "no recorded" not in postmortem.resolution.lower()
         ):
+            res_outcome = (
+                "successful"
+                if postmortem.resolution_effectiveness == "effective"
+                else (postmortem.resolution_effectiveness or "unknown")
+            )
             candidates.append({
                 "entry_type": "resolution",
                 "service": service,
                 "component": component,
                 "body": postmortem.resolution.strip(),
                 "confidence": "confirmed",
-                "outcome_label": postmortem.resolution_effectiveness or "unknown",
+                "outcome_label": res_outcome,
                 "source_incident_ref": inc_id,
                 "provenance": {
                     "source": "human",

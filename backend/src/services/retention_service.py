@@ -225,6 +225,7 @@ class RetentionService:
             row.confidence = candidate.confidence
             row.source_incident_ref = candidate.source_incident_ref
             row.provenance_group_id = candidate.provenance_group_id
+            row.provenance = candidate.provenance or {}
             row.is_synthetic = candidate.is_synthetic
             row.supersedes = candidate.supersedes
             row.confirmed_by = actor

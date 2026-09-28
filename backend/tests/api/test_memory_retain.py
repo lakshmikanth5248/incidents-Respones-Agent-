@@ -642,3 +642,79 @@ def test_retention_is_audited(client, reset_memory_double, confirmed_postmortem_
     assert len(retain_events) == 1
     assert retain_events[0]["details"]["memory_entry_ids"] == [memory_id]
     assert retain_events[0]["details"]["postmortem_id"]
+
+
+# ===========================================================================
+# F13-T19 — End-to-End Post-Mortem Candidates to Retention and Recall
+# ===========================================================================
+
+def test_end_to_end_postmortem_to_retention_and_recall(client, reset_memory_double):
+    """
+    Complete PRD flow:
+      Resolved Incident -> Confirmed Post-Mortem -> Memory Candidates
+      -> POST /api/memory/retain -> Retained Entry IDs -> POST /api/memory/recall
+    """
+    # 1. Intake incident
+    inc_resp = client.post("/api/incidents", json={
+        "symptom_description": "Search index latency spiked to 9.2s due to unindexed tag filters.",
+        "service": "search-indexer",
+        "environment": "production",
+        "severity": "high",
+    })
+    assert inc_resp.status_code == 201
+    inc_id = inc_resp.json()["id"]
+
+    # 2. Resolve incident
+    res_resp = client.post(f"/api/incidents/{inc_id}/resolve", json={
+        "actions": ["Applied composite index on tag_id and tenant_id"],
+        "runbook_id": "rb-search-index-opt",
+        "runbook_version": "1.0",
+        "contributing_factors": ["New tag filter released without DB migration"],
+        "root_cause": "Missing composite index on tags table under high query load",
+        "result": "Query latency dropped to 12ms",
+        "outcome": "successful",
+    })
+    assert res_resp.status_code == 200
+
+    # 3. Verify
+    client.post(f"/api/incidents/{inc_id}/verify", json={
+        "before_metrics": {"p99_latency": "9.2s"},
+        "after_metrics": {"p99_latency": "12ms"},
+    })
+
+    # 4. Generate post-mortem draft
+    pm_resp = client.post(f"/api/incidents/{inc_id}/postmortem", json={})
+    assert pm_resp.status_code == 200
+
+    # 5. Confirm post-mortem draft
+    confirm_resp = client.post(
+        f"/api/incidents/{inc_id}/postmortem/confirm",
+        json={"reviewer": "principal-sre", "review_notes": "Root cause verified"},
+    )
+    assert confirm_resp.status_code == 200
+    pm_data = confirm_resp.json()
+    candidates = pm_data["memory_candidates"]
+    assert len(candidates) >= 2
+
+    # 6. Retain confirmed candidates via Feature 13
+    retain_resp = client.post("/api/memory/retain", json={
+        "incident_id": inc_id,
+        "confirmed": True,
+        "entries": candidates,
+    })
+    assert retain_resp.status_code == 200
+    retain_data = retain_resp.json()
+    assert retain_data["status"] == "retained"
+    assert len(retain_data["memory_entry_ids"]) == len(candidates)
+
+    # 7. Recall retained experience via Feature 04
+    recall_resp = client.post("/api/memory/recall", json={
+        "service": "search-indexer",
+        "query": "index latency unindexed tag filters",
+    })
+    assert recall_resp.status_code == 200
+    recall_data = recall_resp.json()
+    assert recall_data["total_found"] > 0
+    recalled_incident_refs = [e["source_incident_ref"] for e in recall_data["entries"]]
+    assert inc_id in recalled_incident_refs
+

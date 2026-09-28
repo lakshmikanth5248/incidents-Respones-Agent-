@@ -20,6 +20,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -67,6 +68,7 @@ class MemoryRetention(Base):
     confidence = Column(String(16), nullable=True)
     source_incident_ref = Column(String(64), nullable=False)
     provenance_group_id = Column(String(64), nullable=True)
+    provenance = Column(JSON, nullable=False, default=dict)
     is_synthetic = Column(Boolean, nullable=False, default=True)
     supersedes = Column(String(64), nullable=True)
 
@@ -96,6 +98,7 @@ class MemoryRetention(Base):
             "confidence": self.confidence,
             "source_incident_ref": self.source_incident_ref,
             "provenance_group_id": self.provenance_group_id,
+            "provenance": self.provenance or {},
             "is_synthetic": self.is_synthetic,
             "supersedes": self.supersedes,
         }
@@ -113,6 +116,7 @@ class MemoryRetention(Base):
             "outcome_label": self.outcome_label,
             "confidence": self.confidence,
             "source_incident_ref": self.source_incident_ref,
+            "provenance": self.provenance or {},
             "status": self.status,
             "memory_entry_id": self.memory_entry_id,
             "error": self.error,
