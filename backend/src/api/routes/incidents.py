@@ -2,6 +2,7 @@
 Incident API Endpoints.
 Conforms to PRD §12.2 (API-001, API-002, API-003, API-004) and Feature 2 Lifecycle.
 Implements intake, normalization, retrieval, state transitions, concurrency control, and audit.
+Feature 09: POST /api/incidents/{id}/resolve — human decision & resolution (FR-049–FR-052).
 """
 
 from datetime import datetime, timezone
@@ -21,10 +22,12 @@ from src.api.schemas.incident import (
     IncidentMemoryResponse,
 )
 from src.api.schemas.analysis import AnalysisRequest, AnalysisResponse, RecommendationItem
+from src.api.schemas.resolution import ResolveIncidentRequest, ResolutionResponse
 from src.api.errors import APIException
 from src.data.repositories.incident_repository import IncidentRepository
 from src.services.incident_service import IncidentService
 from src.services.analysis_service import AnalysisService
+from src.services.resolution_service import ResolutionService
 from src.memory.service import memory_service
 from src.memory.schemas import RecallRequest, MemoryStatus
 
@@ -330,3 +333,64 @@ def get_incident_recommendations(
     analysis = AnalysisService.get_analysis(db=db, incident_id=id)
     return [RecommendationItem(**rec) for rec in (analysis.recommendations or [])]
 
+
+
+@router.post(
+    "/{id}/resolve",
+    response_model=ResolutionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Record human resolution decision (API-009, FR-049-FR-052)",
+    description=(
+        "Records the engineer resolution decision for a production incident. "
+        "The AI cannot resolve incidents. The engineer decides. "
+        "Idempotent: repeated requests return the existing resolution record. "
+        "Closing rule (FR-052): actions and outcome required unless "
+        "close_without_resolution=True with a stated reason."
+    ),
+)
+def resolve_incident(
+    id: str,
+    request: ResolveIncidentRequest,
+    x_operator: str = Header(None, alias="X-Operator"),
+    db: Session = Depends(get_db),
+) -> ResolutionResponse:
+    """Human-in-the-loop resolution endpoint."""
+    actor = x_operator or "sre-operator"
+    resolution = ResolutionService.resolve_incident(
+        db=db,
+        incident_id=id,
+        request=request,
+        actor=actor,
+    )
+    incident = IncidentRepository.get_by_id(db, id)
+    record = resolution.to_dict()
+    return ResolutionResponse(
+        **record,
+        incident_status=incident.status if incident else "unknown",
+        resolution_status=incident.resolution_status if incident else "resolved",
+    )
+
+
+@router.get(
+    "/{id}/resolution",
+    response_model=ResolutionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get incident resolution record (API-009)",
+    description=(
+        "Retrieve the recorded resolution for this incident. "
+        "Returns 404 if no resolution has been recorded yet."
+    ),
+)
+def get_incident_resolution(
+    id: str,
+    db: Session = Depends(get_db),
+) -> ResolutionResponse:
+    """Retrieve the resolution record for an incident."""
+    resolution = ResolutionService.get_resolution(db=db, incident_id=id)
+    incident = IncidentRepository.get_by_id(db, id)
+    record = resolution.to_dict()
+    return ResolutionResponse(
+        **record,
+        incident_status=incident.status if incident else "unknown",
+        resolution_status=incident.resolution_status if incident else "resolved",
+    )

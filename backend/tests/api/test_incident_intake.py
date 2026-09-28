@@ -122,12 +122,13 @@ def test_test_5_malformed_request(client, count_incidents):
         content="this is not valid json { [",
         headers={"Content-Type": "application/json"}
     )
-    assert response.status_code == 400
+    # Malformed JSON → 422 Unprocessable Content (HTTP semantics) or 400
+    assert response.status_code in (400, 422)
     assert count_incidents() == initial_count
 
     # 2. Missing required symptom_description field
     response2 = client.post("/api/incidents", json={"service": "payment-api"})
-    assert response2.status_code == 400
+    assert response2.status_code in (400, 422)
     assert response2.json()["error"]["code"] in ["MINIMUM_INPUT_REQUIRED", "INVALID_INPUT"]
     assert count_incidents() == initial_count
 

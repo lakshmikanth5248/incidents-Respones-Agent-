@@ -70,8 +70,26 @@ async def api_exception_handler(request: Request, exc: APIException) -> JSONResp
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     logger.warning(f"request.validation_failed errors={exc.errors()} path={request.url.path}")
 
+    # Sanitize Pydantic v2 errors: ctx["error"] may be an Exception object,
+    # which is not JSON-serializable. Convert to string.
+    def _sanitize_error(err: dict) -> dict:
+        sanitized = {}
+        for k, v in err.items():
+            if k == "ctx" and isinstance(v, dict):
+                sanitized[k] = {
+                    ck: str(cv) if isinstance(cv, Exception) else cv
+                    for ck, cv in v.items()
+                }
+            elif isinstance(v, Exception):
+                sanitized[k] = str(v)
+            else:
+                sanitized[k] = v
+        return sanitized
+
+    sanitized_errors = [_sanitize_error(e) for e in exc.errors()]
+
     # Inspect if symptom_description is missing or empty
-    for err in exc.errors():
+    for err in sanitized_errors:
         loc = err.get("loc", ())
         if "symptom_description" in loc:
             return build_error_response(
@@ -79,15 +97,15 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 message="A symptom description is required to create an incident.",
                 status_code=status.HTTP_400_BAD_REQUEST,
                 retryable=False,
-                details={"errors": exc.errors()}
+                details={"errors": sanitized_errors}
             )
 
     return build_error_response(
         code="INVALID_INPUT",
         message="Request validation failed. Ensure all fields adhere to the API contract.",
-        status_code=status.HTTP_400_BAD_REQUEST,
+        status_code=getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422),
         retryable=False,
-        details={"errors": exc.errors()}
+        details={"errors": sanitized_errors}
     )
 
 
