@@ -723,6 +723,121 @@ Returns a JSON array of `RecommendationItem` objects (same schema as within `Ana
 | `404 Not Found` | `ANALYSIS_NOT_FOUND` | No analysis has been run yet for this incident |
 | `404 Not Found` | `INCIDENT_NOT_FOUND` | Incident not found |
 
+
+---
+
+### 3.18 `POST /api/incidents/{id}/resolve` — Human Decision and Resolution (API-009, FR-049 to FR-052)
+
+#### Description
+Records human operator resolution decisions for an incident. Enforces the strict architectural requirement that **the AI cannot resolve production incidents — the engineer decides** (FR-049).
+
+Records actual remediation actions taken, runbook used, contributing factors, root cause, verified outcome, recommendation disposition, and operator rationale.
+
+#### Request Body
+```json
+{
+  "actions": ["Rolled back payment service deployment to v2.4.0", "Restarted degraded worker pods"],
+  "runbook_id": "rb-pay-001",
+  "runbook_version": "1.2.0",
+  "contributing_factors": ["Connection pool configuration miscalculation", "Sudden flash sale traffic spike"],
+  "root_cause": "Database connection exhaustion in payment service pool",
+  "result": "Latency recovered to <120ms, error rate dropped to 0.01%",
+  "outcome": "successful",
+  "recommendation_outcomes": [
+    {
+      "recommendation_id": "rec-pay-pool-01",
+      "decision": "followed",
+      "reason": "Runbook step verified effective",
+      "notes": "Pool size expanded to 50"
+    },
+    {
+      "recommendation_id": "rec-pay-pool-02",
+      "decision": "skipped",
+      "reason": "Not necessary after pool rollback"
+    }
+  ],
+  "operator_notes": "Resolved during on-call rotation after confirming metrics stabilization.",
+  "close_without_resolution": false,
+  "confirm_close_without_resolution": false,
+  "resolved_by": "alice@ops.example.com"
+}
+```
+
+#### Fields
+| Field | Type | Description |
+|---|---|---|
+| `actions` | `list[str]` | Remediation actions taken. Required unless `close_without_resolution=true`. |
+| `runbook_id` | `str \| null` | Runbook ID referenced, if any. |
+| `runbook_version` | `str \| null` | Version of the runbook referenced. |
+| `contributing_factors` | `list[str]` | Contributing environmental or architectural factors. |
+| `root_cause` | `str \| null` | Verified or suspected root cause. |
+| `result` | `str \| null` | Observable result after actions taken. |
+| `outcome` | `str` | Must be one of: `"successful"`, `"ineffective"`, `"inconclusive"`, `"unknown"`. Required unless `close_without_resolution=true`. |
+| `recommendation_outcomes` | `list[object]` | Disposition for each recommendation: `recommendation_id`, `decision` (`"followed"`, `"skipped"`, `"attempted_and_failed"`), `reason`, `notes`. |
+| `operator_notes` | `str \| null` | Freeform engineer notes. |
+| `close_without_resolution` | `bool` | Default `false`. If `true`, closes incident without full resolution data. |
+| `confirm_close_without_resolution` | `bool` | Default `false`. Must be `true` when `close_without_resolution=true`. |
+| `resolved_by` | `str` | Identity of the engineer who resolved the incident. |
+
+#### Closing Rule Gate (FR-050)
+* An incident cannot be closed without resolution information (`actions`) and an `outcome`.
+* If `close_without_resolution = true`, `confirm_close_without_resolution = true` is strictly required. Otherwise returns `422 Unprocessable Content` (`CLOSE_WITHOUT_RESOLUTION_NOT_CONFIRMED`).
+
+#### Idempotency & Concurrency (FR-051)
+* Calling resolve with identical parameters returns `200 OK` with the existing resolution record.
+* Attempting to resolve an already-resolved incident with conflicting parameters returns `409 Conflict` (`INCIDENT_ALREADY_RESOLVED`).
+
+#### Response: `200 OK`
+```json
+{
+  "id": "res-uuid",
+  "incident_id": "inc-uuid",
+  "outcome": "successful",
+  "actions": ["Rolled back payment service deployment to v2.4.0"],
+  "runbook_id": "rb-pay-001",
+  "runbook_version": "1.2.0",
+  "contributing_factors": ["Connection pool exhaustion"],
+  "root_cause": "Database connection exhaustion in payment service pool",
+  "result": "Latency recovered to normal",
+  "recommendation_outcomes": [
+    {
+      "recommendation_id": "rec-pay-pool-01",
+      "decision": "followed",
+      "reason": "Verified effective"
+    }
+  ],
+  "operator_notes": "Resolved by on-call engineer.",
+  "close_without_resolution": false,
+  "resolved_by": "alice@ops.example.com",
+  "resolved_at": "2026-09-28T13:45:00Z",
+  "incident_status": "resolved"
+}
+```
+
+#### Error Responses
+| Code | Error Code | Condition |
+|---|---|---|
+| `404 Not Found` | `INCIDENT_NOT_FOUND` | Incident does not exist |
+| `422 Unprocessable Content` | `RESOLUTION_INFORMATION_REQUIRED` | Missing actions or outcome when not closing without resolution |
+| `422 Unprocessable Content` | `CLOSE_WITHOUT_RESOLUTION_NOT_CONFIRMED` | `close_without_resolution=true` without `confirm_close_without_resolution=true` |
+| `409 Conflict` | `INCIDENT_ALREADY_RESOLVED` | Incident is already resolved with conflicting data |
+
+---
+
+### 3.19 `GET /api/incidents/{id}/resolution` — Get Resolution Record
+
+#### Description
+Returns the resolution record and human decision audit trail for a resolved incident.
+
+#### Success Response: `200 OK`
+Returns the `ResolutionResponse` object.
+
+#### Error Responses
+| Code | Error Code | Condition |
+|---|---|---|
+| `404 Not Found` | `INCIDENT_NOT_FOUND` | Incident does not exist |
+| `404 Not Found` | `RESOLUTION_NOT_FOUND` | Incident has not been resolved yet |
+
 ---
 
 ## Agent Tool Registry — Autonomous Action Prohibition (FR-043, NG-02, NG-03)

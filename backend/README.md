@@ -156,6 +156,18 @@ This is the backend service for the Incident Response Agent, built in accordance
   * `GET /api/runbooks/{id}` (API-015)
   * `GET /api/incidents/{id}/recommendations` (API-008)
 
+* **Feature 9 — Human Decision and Resolution (FR-049–FR-052):**
+  * `src/data/models/resolution.py`: `ResolutionRecord` SQLAlchemy model with unique constraint on `incident_id` for idempotent resolution tracking.
+  * `src/api/schemas/resolution.py`: `ResolveIncidentRequest`, `ResolutionResponse`, `RecommendationOutcome` schemas.
+  * **Human Authority Principle** (FR-049): AI cannot resolve production incidents — the human operator decides.
+  * **Closing Rule Gate** (FR-050): Incidents cannot be closed without remediation actions and verified outcome unless `close_without_resolution=true` AND `confirm_close_without_resolution=true`.
+  * **Outcome Values**: Supported PRD outcomes (`successful`, `ineffective`, `inconclusive`, `unknown`).
+  * **Recommendation Dispositions**: Tracked per recommendation item (`followed`, `skipped`, `attempted_and_failed`).
+  * **Idempotency & Concurrency** (FR-051): Repeated identical resolution returns existing record (`200 OK`); conflicting attempt on resolved incident returns `409 Conflict`.
+  * **Endpoints**:
+    * `POST /api/incidents/{id}/resolve` (API-009)
+    * `GET /api/incidents/{id}/resolution`
+
 ---
 
 ## 3. Running Automated Tests
@@ -166,7 +178,7 @@ cd backend
 python -m pytest -v
 ```
 
-All **112 tests** cover:
+All **132 tests** cover:
 * Valid incident creation (201)
 * Request validation & secret scanning
 * Verbatim raw input preservation & normalization
@@ -223,3 +235,14 @@ All **112 tests** cover:
   * Recommendation provenance (every item carries source, statement, confidence, expected_observation, advisory=True)
   * No autonomous action prohibition (tool registry check, prohibited tool registration guard, is_read_only=False guard)
   * Recommendation schema completeness (all 10 PRD-required fields present)
+* **Feature 9 tests:**
+  * Human-in-the-loop resolution recording (`POST /api/incidents/{id}/resolve`)
+  * Resolution outcome recording (`successful`, `ineffective`, `inconclusive`, `unknown`)
+  * Recommendation disposition tracking (`followed`, `skipped`, `attempted_and_failed`)
+  * Closing rule gate: mandatory resolution info & outcome unless `close_without_resolution=true`
+  * Explicit confirmation check: rejection if `confirm_close_without_resolution=false` (422)
+  * Incident status transition to `resolved`
+  * Resolution idempotency on repeated calls (200 OK)
+  * Concurrency and conflict protection on already-resolved incidents (409)
+  * Resolution record retrieval (`GET /api/incidents/{id}/resolution`)
+  * Resolution audit trail logging
