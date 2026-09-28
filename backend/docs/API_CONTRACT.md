@@ -838,6 +838,146 @@ Returns the `ResolutionResponse` object.
 | `404 Not Found` | `INCIDENT_NOT_FOUND` | Incident does not exist |
 | `404 Not Found` | `RESOLUTION_NOT_FOUND` | Incident has not been resolved yet |
 
+
+---
+
+### 3.20 `POST /api/incidents/{id}/verify` — Resolution Outcome Verification (Feature 10)
+
+#### Description
+Verifies what happened after the engineer's action. Enforces the strict rule: **Do not assume that an action worked merely because the engineer marked it successful.**
+Records available evidence and computes observed changes across baseline and post-action measurements without manufacturing data.
+
+#### Request Body
+```json
+{
+  "before_metrics": {
+    "error_rate": "31%",
+    "latency": "4.8s",
+    "db_connections": "100/100"
+  },
+  "after_metrics": {
+    "error_rate": "2%",
+    "latency": "420ms",
+    "db_connections": "38/100"
+  },
+  "observations": [
+    "Worker pool stabilized",
+    "Error spike subsided"
+  ],
+  "operator_result": "successful",
+  "verification_notes": "Telemetry confirms all metrics returned to nominal baselines."
+}
+```
+
+#### Fields
+| Field | Type | Description |
+|---|---|---|
+| `before_metrics` | `dict` | Baseline metrics prior to resolution action. Stored verbatim. |
+| `after_metrics` | `dict` | Measurements observed following resolution action. Stored verbatim. |
+| `observations` | `list[str]` | Qualitative engineering observations following action. |
+| `operator_result` | `str \| null` | Declared operator outcome (`successful`, `ineffective`, `inconclusive`, `unknown`). If omitted and incident is resolved, automatically inherits from `ResolutionRecord.outcome`. |
+| `verification_notes` | `str \| null` | Verifying engineer's reasoning, notes, or operational context. |
+
+#### Verification Statuses
+- `confirmed` — All evaluated metrics improved to recovered state, no conflicting degradation.
+- `failed` — Measurements degraded or remained at incident failure thresholds (even if engineer marked successful).
+- `inconclusive` — Incomplete telemetry (missing before or after data) or conflicting metrics (some improved while others degraded).
+- `unknown` — Operator declared unknown outcome with no decisive telemetry.
+
+#### Invariant: No Manufactured Measurements
+The system records only actual provided metrics in `before_state` and `after_state`. Default, synthetic, or unobserved metrics are never fabricated.
+
+#### Integration
+- **Resolution feeds verification**: Inherits `operator_result` and links `resolution_id` when resolution record is present.
+- **Verification feeds post-mortem & memory candidate**: Exports structured context (`to_postmortem_context()`, `to_memory_candidate_context()`) with outcome labels and confidence markers.
+
+#### Response: `200 OK`
+```json
+{
+  "id": "ver-7a2e9b01",
+  "incident_id": "INC-2026-0001",
+  "resolution_id": "res-uuid",
+  "verification_status": "confirmed",
+  "operator_result": "successful",
+  "before_state": {
+    "error_rate": "31%",
+    "latency": "4.8s",
+    "db_connections": "100/100"
+  },
+  "after_state": {
+    "error_rate": "2%",
+    "latency": "420ms",
+    "db_connections": "38/100"
+  },
+  "observed_changes": [
+    {
+      "metric": "error_rate",
+      "before": "31%",
+      "after": "2%",
+      "delta": "-29.0%",
+      "direction": "improved",
+      "details": "error_rate changed from 31% to 2% (-29.0%, improved)"
+    },
+    {
+      "metric": "latency",
+      "before": "4.8s",
+      "after": "420ms",
+      "delta": "-4380ms",
+      "direction": "improved",
+      "details": "latency changed from 4.8s to 420ms (-4380ms, improved)"
+    },
+    {
+      "metric": "db_connections",
+      "before": "100/100",
+      "after": "38/100",
+      "delta": "-62/100",
+      "direction": "improved",
+      "details": "db_connections changed from 100/100 to 38/100 (-62/100, improved)"
+    }
+  ],
+  "evidence": [
+    {
+      "source": "metric:error_rate",
+      "claim": "error_rate moved from 31% to 2%",
+      "assessment": "supports_recovery",
+      "details": "error_rate changed from 31% to 2% (-29.0%, improved)"
+    },
+    {
+      "source": "telemetry_recovery",
+      "claim": "All 3 evaluated metrics improved to recovered state",
+      "assessment": "supports_recovery",
+      "details": "Improved metrics: ['db_connections', 'error_rate', 'latency']"
+    }
+  ],
+  "verification_notes": "Telemetry confirms all metrics returned to nominal baselines.",
+  "verified_by": "sre-verifier",
+  "verified_at": "2026-09-28T14:15:00Z",
+  "created_at": "2026-09-28T14:15:00Z",
+  "incident_status": "resolved"
+}
+```
+
+#### Error Responses
+| Code | Error Code | Condition |
+|---|---|---|
+| `404 Not Found` | `INCIDENT_NOT_FOUND` | Incident does not exist |
+
+---
+
+### 3.21 `GET /api/incidents/{id}/verification` — Get Verification Record
+
+#### Description
+Retrieves the outcome verification record and evidence assessment for an incident.
+
+#### Success Response: `200 OK`
+Returns the `VerificationResponse` object.
+
+#### Error Responses
+| Code | Error Code | Condition |
+|---|---|---|
+| `404 Not Found` | `INCIDENT_NOT_FOUND` | Incident does not exist |
+| `404 Not Found` | `VERIFICATION_NOT_FOUND` | Incident has not been verified yet |
+
 ---
 
 ## Agent Tool Registry — Autonomous Action Prohibition (FR-043, NG-02, NG-03)

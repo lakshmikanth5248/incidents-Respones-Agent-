@@ -168,6 +168,20 @@ This is the backend service for the Incident Response Agent, built in accordance
     * `POST /api/incidents/{id}/resolve` (API-009)
     * `GET /api/incidents/{id}/resolution`
 
+* **Feature 10 — Resolution Outcome Verification:**
+  * `src/data/models/verification.py`: `VerificationRecord` SQLAlchemy model persisting verbatim before/after states, observed changes, and evidence items.
+  * `src/api/schemas/verification.py`: `VerificationRequest`, `VerificationResponse`, `ObservedChange`, `VerificationEvidenceItem` schemas.
+  * `src/services/verification_service.py`: `VerificationService` evaluating objective telemetry against operator claims.
+  * **Core Invariant**: Do not assume an action worked merely because the engineer marked it successful.
+  * **No Fabricated Measurements**: Raw metrics stored verbatim; measurements are never manufactured or hallucinated.
+  * **Status Outcomes**: `confirmed`, `failed`, `inconclusive`, `unknown`.
+  * **Integration**:
+    * Resolution feeds verification: inherits operator result and links `resolution_id`.
+    * Verification feeds downstream stages: provides `to_postmortem_context()` and `to_memory_candidate_context()`.
+  * **Endpoints**:
+    * `POST /api/incidents/{id}/verify` (and alias `POST /api/incidents/{id}/verification`)
+    * `GET /api/incidents/{id}/verification`
+
 ---
 
 ## 3. Running Automated Tests
@@ -178,7 +192,7 @@ cd backend
 python -m pytest -v
 ```
 
-All **132 tests** cover:
+All **148 tests** cover:
 * Valid incident creation (201)
 * Request validation & secret scanning
 * Verbatim raw input preservation & normalization
@@ -246,3 +260,21 @@ All **132 tests** cover:
   * Concurrency and conflict protection on already-resolved incidents (409)
   * Resolution record retrieval (`GET /api/incidents/{id}/resolution`)
   * Resolution audit trail logging
+* **Feature 10 tests:**
+  * Successful recovery verification (`confirmed`, all metrics improved, delta computation)
+  * Failed recovery with degraded measurements despite engineer claiming success (`failed`)
+  * Failed recovery with stagnant metrics at incident thresholds (`failed`)
+  * Failed recovery with operator declaring ineffective action (`failed`)
+  * Incomplete evidence with missing after metrics (`inconclusive`)
+  * Incomplete evidence with missing before baseline (`inconclusive`)
+  * Incomplete evidence with disjoint metric sets (`inconclusive`)
+  * Conflicting metrics with some improving while others severely degrade (`inconclusive`)
+  * Unknown outcome with operator uncertainty and no telemetry (`unknown`)
+  * Anti-hallucination / zero manufactured measurements verification
+  * Resolution integration: automatically inherits operator result and links `resolution_id`
+  * Downstream integration: `to_postmortem_context` and `to_memory_candidate_context`
+  * Resolution verification record retrieval (`GET /api/incidents/{id}/verification`)
+  * Verification idempotency on repeated calls (record updated cleanly)
+  * Alias route verification (`POST /api/incidents/{id}/verification`)
+  * Nonexistent incident 404 handling (`INCIDENT_NOT_FOUND`)
+
