@@ -88,6 +88,45 @@ class HypothesisItem(BaseModel):
     precedent_backed: bool = False
     status: str = "candidate"
 
+class RecommendationItem(BaseModel):
+    """
+    Structured recommendation conforming to PRD §12.6 (FR-035 - FR-043) and Feature 08.
+    Contains:
+    - recommendation_id
+    - action / investigation
+    - reason
+    - supporting_evidence
+    - memory_references
+    - runbook_reference
+    - risk
+    - expected_observation
+    - confidence
+    - provenance
+    """
+    model_config = ConfigDict(extra="ignore")
+
+    recommendation_id: str
+    action: str = Field(..., description="Action or investigation to perform")
+    investigation: Optional[str] = Field(default=None, description="Detailed diagnostic or investigative steps")
+    action_type: str = Field(default="diagnostic", description="'diagnostic' or 'remediation'")
+    reason: str = Field(..., description="Justification grounded in evidence or hypothesis")
+    supporting_evidence: List[str] = Field(default_factory=list)
+    memory_references: List[str] = Field(default_factory=list)
+    runbook_reference: Optional[str] = Field(default=None, description="Runbook ID if applicable, None if no runbook coverage")
+    runbook_outcome: Optional[str] = Field(default="no_record", description="'successful', 'ineffective', 'untested', or 'RUNBOOK_SET_UNAVAILABLE'")
+    hypothesis_reference: Optional[str] = Field(default=None, description="Hypothesis ID or statement this addresses")
+    risk: str = Field(default="low", description="Risk level: 'low', 'medium', 'high'")
+    is_destructive: bool = Field(default=False, description="Flag indicating if procedure alters production state")
+    safer_alternative: Optional[str] = Field(default=None, description="Safer diagnostic alternative if procedure is risky or destructive")
+    expected_observation: str = Field(..., description="What the engineer expects to observe to verify effectiveness")
+    confidence: Dict[str, Any] = Field(default_factory=dict)
+    provenance: List[Dict[str, Any]] = Field(default_factory=list)
+    advisory: bool = Field(default=True, description="Always True: agent does not execute production actions")
+    advisory_note: str = Field(
+        default="Advisory only. The agent does not execute production actions. Human engineer authorization required.",
+        description="Explicit advisory disclaimer",
+    )
+
 
 class AnalysisRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -102,7 +141,7 @@ class AnalysisRequest(BaseModel):
     )
     stage: Optional[str] = Field(
         default=None,
-        description="Optional halting stage: 'interpret', 'recall', 'compare', 'hypothesize'"
+        description="Optional halting stage: 'interpret', 'recall', 'compare', 'hypothesize', 'recommend'"
     )
 
 
@@ -117,8 +156,10 @@ class AnalysisResponse(BaseModel):
     symptom_analysis: CurrentIncidentInterpretation
     comparisons: List[ComparisonItem] = Field(default_factory=list)
     hypotheses: List[HypothesisItem] = Field(default_factory=list)
+    recommendations: List[RecommendationItem] = Field(default_factory=list)
     unknowns: List[str] = Field(default_factory=list)
     information_gaps: List[str] = Field(default_factory=list)
     model_metadata: ModelMetadata
     created_at: str
+
 

@@ -28,9 +28,10 @@ class IncidentAnalysis(Base):
     information_gaps = Column(JSON, nullable=False, default=list)
     evidence = Column(JSON, nullable=False, default=dict)
 
-    # Reserved for Feature 4 & 5 (Must be empty/null before recall!)
+    # Reasoning artefacts: Features 06-08
     hypotheses = Column(JSON, nullable=False, default=list)
     comparisons = Column(JSON, nullable=False, default=list)
+    recommendations = Column(JSON, nullable=False, default=list)
     recall_record = Column(JSON, nullable=True)
     memory_status = Column(String(32), nullable=True)
 
@@ -53,6 +54,7 @@ class IncidentAnalysis(Base):
             "symptom_analysis": self.symptom_analysis,
             "comparisons": self.comparisons or [],
             "hypotheses": self.hypotheses or [],
+            "recommendations": self.recommendations or [],
             "unknowns": self.unknowns or [],
             "information_gaps": self.information_gaps or [],
             "model_metadata": {

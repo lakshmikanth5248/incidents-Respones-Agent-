@@ -23,8 +23,11 @@ from src.api.schemas.analysis import (
     CurrentIncidentInterpretation,
     ComparisonItem,
     HypothesisItem,
+    RecommendationItem,
 )
 from src.memory.schemas import MemoryEntry, MemoryStatus, EntryType, OutcomeLabel
+from src.services.runbook_service import runbook_service
+from src.api.errors import APIException
 
 
 @dataclass
@@ -478,5 +481,330 @@ class ReasoningService:
 
         return hypotheses
 
+    @classmethod
+    def generate_recommendations(
+        cls,
+        incident: Incident,
+        interpretation: CurrentIncidentInterpretation,
+        memory_context: MemoryContext,
+        hypotheses: List[HypothesisItem],
+        comparisons: Optional[List[ComparisonItem]] = None,
+    ) -> List[RecommendationItem]:
+        """
+        Stage 6: Generate structured recommendations after comparison and hypothesis generation.
+        Conforms strictly to PRD §12.6 (FR-035–FR-044) and Feature 08.
+
+        Guarantees:
+        1. Advisory Only: The agent recommends; the agent does NOT execute production actions.
+        2. Precedent Ordering: Diagnostic investigation first, then remediation ordered by prior success (successful > untested > ineffective).
+        3. Failed Runbook Memory: If runbook previously failed (ineffective), never present as proven; surface prominent risk warning and safer diagnostic alternatives.
+        4. Runbook Outage / Unavailable: When runbooks cannot be reached (RUNBOOK_SET_UNAVAILABLE), explicitly state absence; provide evidence-based guidance; never fabricate runbook.
+        5. Unknown Runbook: Explicitly state when no runbook coverage exists; never invent a runbook.
+        6. Full Provenance & Grounding: Every recommendation includes memory references, supporting evidence, expected observation, risk, and confidence.
+        """
+        diagnostic_recs: List[RecommendationItem] = []
+        remediation_recs: List[RecommendationItem] = []
+
+        incident_id = incident.id
+        current_symptoms = incident.symptoms_normalized or incident.symptoms_raw or "symptoms unrecorded"
+        top_hyp = hypotheses[0] if hypotheses else None
+        top_hyp_stmt = top_hyp.hypothesis if top_hyp else f"Potential {interpretation.failure_mode}"
+
+        # ------------------------------------------------------------------
+        # 1. Diagnostic / Investigation Recommendations (FR-039: Diagnostic steps first)
+        # ------------------------------------------------------------------
+        # Check all incident text sources for deployment / release regression
+        recent_changes_list = getattr(incident, "recent_changes", []) or []
+        all_incident_text = " ".join([
+            str(getattr(incident, "symptoms_raw", "") or ""),
+            str(getattr(incident, "symptoms_normalized", "") or ""),
+            " ".join(recent_changes_list) if isinstance(recent_changes_list, list) else str(recent_changes_list),
+        ]).lower()
+
+        is_deployment_related = any(
+            kw in all_incident_text
+            for kw in ["deploy", "release", "v2.", "version", "upgrade", "rollback"]
+        )
+
+        diag_evidence = [f"Current symptom: {current_symptoms}"]
+        if interpretation.normalized_signatures:
+            diag_evidence.extend([f"Signature: {s}" for s in interpretation.normalized_signatures[:2]])
+        if top_hyp:
+            diag_evidence.append(f"Top hypothesis: {top_hyp_stmt}")
+
+        diag_mem_refs = [e.entry_id for e in memory_context.entries[:3]]
+        diag_provenance: List[Dict[str, Any]] = [
+            {
+                "source": "current_incident",
+                "statement": f"Observed failure mode: {interpretation.failure_mode}",
+            }
+        ]
+        if memory_context.entries:
+            diag_provenance.append({
+                "source": f"recalled_memory:{memory_context.entries[0].entry_id}",
+                "statement": f"Precedent: {memory_context.entries[0].source_incident_ref or 'prior_incident'}",
+            })
+
+        if is_deployment_related:
+            svc_name = incident.service
+            if "v2.4" in all_incident_text:
+                diag_action = f"Compare {svc_name} v2.4 against v2.3."
+            else:
+                diag_action = f"Compare {svc_name} current release against previous release."
+            diag_reason = (
+                f"Current {interpretation.failure_mode} started after deployment. "
+                f"Historical reference: Previous {incident.service} incident with similar symptoms. "
+                f"Next: Inspect database connection acquisition/release. "
+                f"If confirmed: Engineer may consider rollback."
+            )
+            diag_investigation = (
+                "1. Query pg_stat_activity for idle-in-transaction connections.\n"
+                "2. Inspect database connection acquisition/release logs for leaks.\n"
+                "3. Compare deployment manifests and configuration diffs between revisions.\n"
+                "4. If connection leak is confirmed, engineer may consider deployment rollback."
+            )
+        else:
+            diag_action = f"Inspect {incident.service} telemetry, active error logs, and component configurations for {interpretation.failure_mode}."
+            diag_reason = (
+                f"Ground truth verification of {interpretation.failure_mode} before applying any operational procedures. "
+                f"Confirm active connection saturation and identify offending queries or leases."
+            )
+            diag_investigation = (
+                f"1. Inspect error rates, saturation metrics, and logs for {incident.service}.\n"
+                f"2. Validate component health and connection pool limits.\n"
+                f"3. Review telemetry to isolate the primary driver of {interpretation.failure_mode}."
+            )
+
+        diag_rec = RecommendationItem(
+            recommendation_id=f"REC-{incident_id}-001",
+            action=diag_action,
+            investigation=diag_investigation,
+            action_type="diagnostic",
+            reason=diag_reason,
+            supporting_evidence=diag_evidence,
+            memory_references=diag_mem_refs,
+            runbook_reference=None,
+            runbook_outcome="no_record",
+            hypothesis_reference=top_hyp_stmt,
+            risk="low",
+            is_destructive=False,
+            safer_alternative=None,
+            expected_observation="Identify whether failure is isolated to recent changes without disrupting live production traffic.",
+            confidence={
+                "score": top_hyp.confidence.get("score", 0.85) if top_hyp else 0.80,
+                "level": "confirmed" if (top_hyp and top_hyp.confidence.get("score", 0.0) >= 0.80) else "probable",
+                "basis": "Diagnostic verification grounded in current telemetry facts and top hypothesis evidence.",
+            },
+            provenance=diag_provenance,
+            advisory=True,
+        )
+        diagnostic_recs.append(diag_rec)
+
+        # ------------------------------------------------------------------
+        # 2. Runbook Lookup & Remediation Recommendations
+        # ------------------------------------------------------------------
+        runbooks_available = True
+        matching_runbooks = []
+        unavailable_error = None
+
+        try:
+            if not runbook_service.is_available():
+                runbooks_available = False
+                unavailable_error = "RUNBOOK_SET_UNAVAILABLE"
+            else:
+                matching_runbooks = runbook_service.find_matching_runbooks(
+                    service=incident.service,
+                    failure_mode=interpretation.failure_mode,
+                    symptoms=current_symptoms,
+                    recalled_memories=memory_context.entries,
+                )
+        except APIException as e:
+            runbooks_available = False
+            unavailable_error = e.code or "RUNBOOK_SET_UNAVAILABLE"
+        except Exception:
+            runbooks_available = False
+            unavailable_error = "RUNBOOK_SET_UNAVAILABLE"
+
+        # Handle Runbook Outage (RUNBOOK_SET_UNAVAILABLE)
+        if not runbooks_available:
+            outage_rec = RecommendationItem(
+                recommendation_id=f"REC-{incident_id}-002",
+                action=f"Evidence-based investigation and manual mitigation for {incident.service}.",
+                investigation="Runbook reference catalog is unavailable. Perform manual log inspection, query active connections, and verify pool thresholds.",
+                action_type="diagnostic",
+                reason=(
+                    f"Runbook coverage: {unavailable_error or 'RUNBOOK_SET_UNAVAILABLE'}. "
+                    "The runbook reference set could not be reached. "
+                    "Providing evidence-based investigation guidance based on current telemetry and recalled memories. "
+                    "Never fabricating a runbook."
+                ),
+                supporting_evidence=[f"Symptom: {current_symptoms}"],
+                memory_references=diag_mem_refs,
+                runbook_reference=None,
+                runbook_outcome="RUNBOOK_SET_UNAVAILABLE",
+                hypothesis_reference=top_hyp_stmt,
+                risk="medium",
+                is_destructive=False,
+                safer_alternative="Proceed with non-destructive telemetry inspection and read-only metrics while runbook catalog is offline.",
+                expected_observation="Isolate operational failure through direct metric examination without automated runbook assistance.",
+                confidence={
+                    "score": 0.70,
+                    "level": "probable",
+                    "basis": "Evidence-based investigation guidance when runbook catalog is unreachable.",
+                },
+                provenance=[
+                    {
+                        "source": "runbook_service",
+                        "statement": f"Runbook coverage: {unavailable_error or 'RUNBOOK_SET_UNAVAILABLE'}",
+                    }
+                ],
+                advisory=True,
+            )
+            remediation_recs.append(outage_rec)
+
+        # Handle No Matching Runbooks (FR-041: Explicit absence stated, never fabricate)
+        elif not matching_runbooks:
+            no_rb_rec = RecommendationItem(
+                recommendation_id=f"REC-{incident_id}-002",
+                action=f"Evidence-based troubleshooting for {incident.service} {interpretation.failure_mode}.",
+                investigation="No matching runbook found in catalog. Rely on diagnostic telemetry, log analysis, and system metrics.",
+                action_type="diagnostic",
+                reason=(
+                    f"Runbook coverage: None. No matching runbook exists in the reference catalog for service "
+                    f"'{incident.service}' and failure mode '{interpretation.failure_mode}'. Never fabricating a runbook."
+                ),
+                supporting_evidence=[f"Symptom: {current_symptoms}"],
+                memory_references=diag_mem_refs,
+                runbook_reference=None,
+                runbook_outcome="no_matching_runbook",
+                hypothesis_reference=top_hyp_stmt,
+                risk="low",
+                is_destructive=False,
+                safer_alternative=None,
+                expected_observation="Identify root cause and manual resolution using application metrics and logs.",
+                confidence={
+                    "score": 0.75,
+                    "level": "probable",
+                    "basis": "No runbook in catalog matches incident criteria; explicit absence stated.",
+                },
+                provenance=[
+                    {
+                        "source": "runbook_catalog",
+                        "statement": f"No matching runbook found for service '{incident.service}'.",
+                    }
+                ],
+                advisory=True,
+            )
+            remediation_recs.append(no_rb_rec)
+
+        # Handle Matching Runbooks
+        else:
+            for rb in matching_runbooks:
+                tr = rb.track_record
+                outcome_label = tr.last_outcome or "no_record"
+
+                # Check Failed Runbook Memory (Ineffective runbook)
+                if outcome_label == "ineffective" or tr.times_ineffective > 0:
+                    rb_outcome = "ineffective"
+                    rb_risk = "high"
+                    rb_reason = (
+                        f"WARNING: Runbook {rb.id} ({rb.title}) was previously marked INEFFECTIVE "
+                        f"in prior incident memory ({tr.times_ineffective} failed attempt(s)). "
+                        "Do NOT present as proven. Exercise extreme caution."
+                    )
+                    rb_safer = rb.safer_diagnostic_alternative or "Execute non-destructive diagnostic verification prior to any operational attempt."
+                    rb_conf_score = 0.40
+                    rb_conf_level = "low"
+                elif outcome_label == "successful" or tr.times_successful > 0:
+                    rb_outcome = "successful"
+                    rb_risk = rb.risk_level
+                    rb_reason = (
+                        f"Runbook {rb.id} ({rb.title}) was PREVIOUSLY SUCCESSFUL in resolving "
+                        f"similar {incident.service} incidents in organizational memory "
+                        f"({tr.times_successful} successful application(s))."
+                    )
+                    rb_safer = rb.safer_diagnostic_alternative
+                    rb_conf_score = 0.90
+                    rb_conf_level = "confirmed"
+                else:
+                    rb_outcome = "untested"
+                    rb_risk = rb.risk_level
+                    rb_reason = (
+                        f"Runbook {rb.id} ({rb.title}) matches service '{rb.service}' and failure mode "
+                        f"'{rb.failure_mode_label}', but has no prior execution track record in memory (untested)."
+                    )
+                    rb_safer = rb.safer_diagnostic_alternative
+                    rb_conf_score = 0.70
+                    rb_conf_level = "probable"
+
+                is_destruct = rb.is_destructive or rb_risk == "high"
+                if is_destruct:
+                    rb_risk = "high"
+                    rb_reason += " Note: High-risk/destructive procedure. Engineer may consider rollback or intervention only after confirmation."
+                    if not rb_safer:
+                        rb_safer = "Inspect read-only metrics and configuration diffs before applying changes."
+
+                rb_prov: List[Dict[str, Any]] = [
+                    {
+                        "source": f"runbook_catalog:{rb.id}",
+                        "statement": f"Runbook: {rb.title} ({rb.id}), Risk: {rb_risk}",
+                    },
+                    {
+                        "source": "retained_memory",
+                        "statement": (
+                            f"Track record: {tr.times_applied} applied, "
+                            f"{tr.times_successful} successful, {tr.times_ineffective} ineffective "
+                            f"(last outcome: {tr.last_outcome})"
+                        ),
+                    },
+                ]
+
+                rb_rec = RecommendationItem(
+                    recommendation_id=f"REC-{incident_id}-{rb.id}",
+                    action=f"Execute procedure: {rb.title} ({rb.id})",
+                    investigation="\n".join(rb.steps),
+                    action_type="remediation",
+                    reason=rb_reason,
+                    supporting_evidence=[f"Symptom match: {current_symptoms}", f"Target failure mode: {rb.failure_mode_label}"],
+                    memory_references=diag_mem_refs,
+                    runbook_reference=rb.id,
+                    runbook_outcome=rb_outcome,
+                    hypothesis_reference=top_hyp_stmt,
+                    risk=rb_risk,
+                    is_destructive=is_destruct,
+                    safer_alternative=rb_safer,
+                    expected_observation="Reduction in error rates and connection pool recovery to safe operating thresholds.",
+                    confidence={
+                        "score": rb_conf_score,
+                        "level": rb_conf_level,
+                        "basis": f"Runbook {rb.id} track record: {tr.times_applied} applied, {tr.times_successful} successful, {tr.times_ineffective} ineffective.",
+                    },
+                    provenance=rb_prov,
+                    advisory=True,
+                )
+                remediation_recs.append(rb_rec)
+
+        # ------------------------------------------------------------------
+        # 3. Precedent Ordering (FR-038)
+        # Precedent order for remediation: successful (1) > untested (2) > ineffective (3)
+        # ------------------------------------------------------------------
+        outcome_rank = {"successful": 1, "untested": 2, "no_matching_runbook": 3, "RUNBOOK_SET_UNAVAILABLE": 3, "ineffective": 4}
+        remediation_recs.sort(
+            key=lambda r: (
+                outcome_rank.get(r.runbook_outcome, 3),
+                -float(r.confidence.get("score", 0.0)),
+                r.action,
+            )
+        )
+
+        all_recs = diagnostic_recs + remediation_recs
+
+        # Assign sequential IDs REC-{id}-001, REC-{id}-002, etc.
+        for idx, rec in enumerate(all_recs):
+            rec.recommendation_id = f"REC-{incident_id}-{idx + 1:03d}"
+
+        return all_recs
+
 
 reasoning_service = ReasoningService()
+

@@ -5,7 +5,7 @@ Implements intake, normalization, retrieval, state transitions, concurrency cont
 """
 
 from datetime import datetime, timezone
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 from fastapi import APIRouter, Depends, Header, Query, status
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,7 @@ from src.api.schemas.incident import (
     AuditEventResponse,
     IncidentMemoryResponse,
 )
-from src.api.schemas.analysis import AnalysisRequest, AnalysisResponse
+from src.api.schemas.analysis import AnalysisRequest, AnalysisResponse, RecommendationItem
 from src.api.errors import APIException
 from src.data.repositories.incident_repository import IncidentRepository
 from src.services.incident_service import IncidentService
@@ -313,3 +313,20 @@ def get_incident_memory(
         recall_record=recall_record,
         entries=filtered_entries,
     )
+
+
+@router.get(
+    "/{id}/recommendations",
+    response_model=List[RecommendationItem],
+    status_code=status.HTTP_200_OK,
+    summary="Get incident recommendations (API-008)",
+    description="Retrieve structured advisory recommendations generated for this incident.",
+)
+def get_incident_recommendations(
+    id: str,
+    db: Session = Depends(get_db),
+) -> List[RecommendationItem]:
+    """Retrieve recommendations generated for the incident."""
+    analysis = AnalysisService.get_analysis(db=db, incident_id=id)
+    return [RecommendationItem(**rec) for rec in (analysis.recommendations or [])]
+

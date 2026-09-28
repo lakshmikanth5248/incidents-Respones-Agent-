@@ -149,12 +149,13 @@ class AnalysisService:
             memory_status=memory_status_str,
         )
 
-        target_stage = (request.stage or "hypothesize").lower() if request else "hypothesize"
+        target_stage = (request.stage or "recommend").lower() if request else "recommend"
         comparisons_list = []
         hypotheses_list = []
+        recommendations_list = []
 
         # 7. Core Reasoning Stage 4: Comparison (FR-023..FR-028, AC2-04)
-        # Order: INTERPRET -> RECALL -> CONTEXT ASSEMBLY -> COMPARE -> HYPOTHESIZE
+        # Order: INTERPRET -> RECALL -> CONTEXT ASSEMBLY -> COMPARE -> HYPOTHESIZE -> RECOMMEND
         if target_stage not in ["interpret", "recall"]:
             comparisons_objs = reasoning_service.compare_evidence(
                 incident=incident,
@@ -173,7 +174,18 @@ class AnalysisService:
                 )
                 hypotheses_list = [h.model_dump() for h in hypotheses_objs]
 
-        # 9. Revisioning & Persistence (PRD BE-019)
+                # 9. Core Reasoning Stage 6: Recommendation Generation (FR-035..FR-044, Feature 08)
+                if target_stage not in ["hypothesize"]:
+                    recommendations_objs = reasoning_service.generate_recommendations(
+                        incident=incident,
+                        interpretation=interpretation,
+                        memory_context=memory_context,
+                        hypotheses=hypotheses_objs,
+                        comparisons=comparisons_objs,
+                    )
+                    recommendations_list = [r.model_dump() for r in recommendations_objs]
+
+        # 10. Revisioning & Persistence (PRD BE-019)
         next_revision = AnalysisRepository.get_next_revision(db, incident_id)
         analysis_id = f"ANA-{incident_id}-r{next_revision}"
 
@@ -189,6 +201,7 @@ class AnalysisService:
             evidence=incident.to_dict(),
             hypotheses=hypotheses_list,
             comparisons=comparisons_list,
+            recommendations=recommendations_list,
             recall_record=recall_record_dict,
             memory_status=memory_status_str,
             prompt_tokens=model_output.prompt_tokens,

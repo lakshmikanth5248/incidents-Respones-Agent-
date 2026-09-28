@@ -21,7 +21,7 @@ from src.api.errors import (
     db_exception_handler,
     generic_exception_handler,
 )
-from src.api.routes import incidents, health, memory
+from src.api.routes import incidents, health, memory, runbooks
 
 
 @asynccontextmanager
@@ -72,6 +72,7 @@ def create_app() -> FastAPI:
     # 3. Mount API Routers under /api
     application.include_router(incidents.router, prefix=settings.API_PREFIX)
     application.include_router(memory.router, prefix=settings.API_PREFIX)
+    application.include_router(runbooks.router, prefix=settings.API_PREFIX)
     application.include_router(health.router, prefix=settings.API_PREFIX)
 
     return application
