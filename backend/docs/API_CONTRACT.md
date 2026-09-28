@@ -1,10 +1,14 @@
-# Backend API Contract — Features 1, 2, 3, and 4
+# Backend API Contract — Features 1–8
 
 This document defines the formal HTTP API contract for:
 * **Feature 1**: Incident Intake & Normalization
 * **Feature 2**: Incident Retrieval, State & Lifecycle Management
 * **Feature 3**: Current Incident Analysis (Stage 1 Reasoning: TL-001)
 * **Feature 4**: Hindsight Memory Service Module (Isolated Layer, Recall, Retain, Experience)
+* **Feature 5**: Hindsight Recall (POST /api/memory/recall, integrated into analysis)
+* **Feature 6**: Current/Historical Comparison
+* **Feature 7**: Hypothesis Generation
+* **Feature 8**: Recommendation + Runbook Intelligence
 
 ---
 
@@ -30,7 +34,7 @@ This document defines the formal HTTP API contract for:
 
 ## 2. Core Architectural Invariant: Reasoning Order (D-02)
 
-The system enforces the strict 5-stage reasoning sequence:
+The system enforces the strict 6-stage reasoning sequence:
 
 ```text
 INTERPRET  (Stage 1: Current Incident Analyzer)
@@ -42,13 +46,17 @@ CONTEXT ASSEMBLY (Stage 3: Memory Context Categorization)
 COMPARE    (Stage 4: Current vs Historical Comparison)
    ↓
 HYPOTHESIZE (Stage 5: Ranked Precedent-Backed Hypotheses)
+   ↓
+RECOMMEND  (Stage 6: Advisory Recommendations + Runbook Intelligence)
 ```
 
 **Critical Invariants:**
 1. The system does NOT generate root-cause hypotheses before Hindsight recall completes.
-2. Anti-hallucination guarantee: The agent may ONLY claim historical facts that exist in recalled memory.
-3. Unknowns are explicitly declared when evidence is insufficient.
-4. Conflicting historical memories are surfaced, never silently suppressed.
+2. The system does NOT generate recommendations before hypotheses are formed.
+3. Anti-hallucination guarantee: The agent may ONLY claim historical facts that exist in recalled memory.
+4. Unknowns are explicitly declared when evidence is insufficient.
+5. Conflicting historical memories are surfaced, never silently suppressed.
+6. **Advisory-only**: The agent recommends and does NOT execute any production action.
 
 ---
 
@@ -586,3 +594,156 @@ Marks a retained memory record as `incorrect`, `inapplicable`, or `outdated`, at
   "action_taken": "Flagged as outdated and deprioritized in future recall ranking."
 }
 ```
+
+---
+
+## Feature 8: Recommendation + Runbook Intelligence
+
+### 3.14 `GET /api/runbooks` — List & Search Runbooks (API-015)
+
+#### Description
+Returns the runbook reference catalog, filtered by service, failure mode, or free-text search. Each runbook is joined with its historical outcome track record from Hindsight retained memory.
+
+#### Query Parameters
+| Parameter | Type | Description |
+|---|---|---|
+| `service` | `string` | Filter by service name (e.g. `payment-api`) |
+| `failure_mode_label` | `string` | Filter by failure mode (e.g. `database_connection_exhaustion`) |
+| `q` | `string` | Full-text search across title, steps, and applicable symptoms |
+
+#### Success Response: `200 OK`
+```json
+{
+  "total": 2,
+  "runbooks": [
+    {
+      "id": "RB-PAY-001",
+      "title": "Payment API Connection Pool Recovery",
+      "service": "payment-api",
+      "failure_mode_label": "database_connection_exhaustion",
+      "steps": [
+        "1. Query pg_stat_activity for idle-in-transaction connections older than 60s.",
+        "2. Inspect transaction manager connection leak timeout configuration.",
+        "3. Gracefully terminate stale database connection leases.",
+        "4. Verify active connection count drops below pool capacity ceiling."
+      ],
+      "applicable_symptoms": ["connection pool exhausted", "HikariPool", "connection timeout"],
+      "risk_level": "medium",
+      "is_destructive": false,
+      "safer_diagnostic_alternative": "Query pg_stat_activity read-only metrics before terminating any connection.",
+      "track_record": {
+        "times_applied": 3,
+        "times_successful": 3,
+        "times_ineffective": 0,
+        "last_outcome": "successful",
+        "outcome_source": "retained_memory"
+      }
+    }
+  ]
+}
+```
+
+#### Error Responses
+| Code | Error Code | Condition |
+|---|---|---|
+| `503 Service Unavailable` | `RUNBOOK_SET_UNAVAILABLE` | Runbook catalog is offline |
+
+---
+
+### 3.15 `GET /api/runbooks/{id}` — Get Runbook (API-015)
+
+#### Description
+Retrieve a single runbook by ID, joined with its historical outcome track record.
+
+#### Success Response: `200 OK`
+Returns a single `Runbook` object (same schema as above).
+
+#### Error Responses
+| Code | Error Code | Condition |
+|---|---|---|
+| `404 Not Found` | `RUNBOOK_NOT_FOUND` | Runbook ID not in catalog |
+| `503 Service Unavailable` | `RUNBOOK_SET_UNAVAILABLE` | Runbook catalog is offline |
+
+---
+
+### 3.16 `POST /api/incidents/{id}/analyze` — Stage 6 Additions
+
+The `/analyze` endpoint now also produces `recommendations` as Stage 6 of the reasoning pipeline (after hypotheses). The response `AnalysisResponse` now includes:
+
+```json
+{
+  "recommendations": [
+    {
+      "recommendation_id": "REC-INC-2026-0001-001",
+      "action": "Inspect payment-api telemetry, active error logs, and component configurations for database_connection_exhaustion.",
+      "investigation": "1. Inspect error rates...\n2. Validate connection pool limits...",
+      "action_type": "diagnostic",
+      "reason": "Ground truth verification of database_connection_exhaustion before applying any operational procedures.",
+      "supporting_evidence": ["Current symptom: connection pool exhausted"],
+      "memory_references": ["mem-abc123"],
+      "runbook_reference": null,
+      "runbook_outcome": "no_record",
+      "hypothesis_reference": "Candidate Cause: ...",
+      "risk": "low",
+      "is_destructive": false,
+      "safer_alternative": null,
+      "expected_observation": "Identify whether failure is isolated to recent changes without disrupting live production traffic.",
+      "confidence": {"score": 0.85, "level": "confirmed", "basis": "..."},
+      "provenance": [{"source": "current_incident", "statement": "Observed failure mode: ..."}],
+      "advisory": true,
+      "advisory_note": "Advisory only. The agent does not execute production actions. Human engineer authorization required."
+    }
+  ]
+}
+```
+
+**Recommendation ordering (FR-038):**
+1. Diagnostic investigation steps first (FR-039)
+2. Remediation steps ordered by prior outcome: `successful` → `untested` → `ineffective`
+
+**Runbook absence (FR-041):** When no matching runbook exists or runbook catalog is offline, `runbook_reference = null` is explicitly set and the reason states why. A runbook is never fabricated.
+
+**Failed runbooks (FR-037, FR-042):** When `runbook_outcome = "ineffective"`, the recommendation includes a prominent warning in `reason`, `risk = "high"`, and a `safer_alternative`.
+
+**Advisory invariant (FR-043):** `advisory = true` is always set. The agent never executes any production action.
+
+---
+
+### 3.17 `GET /api/incidents/{id}/recommendations` — Get Recommendations (API-008)
+
+#### Description
+Returns the advisory recommendations generated for this incident during the most recent analysis run.
+
+#### Success Response: `200 OK`
+Returns a JSON array of `RecommendationItem` objects (same schema as within `AnalysisResponse`).
+
+#### Error Responses
+| Code | Error Code | Condition |
+|---|---|---|
+| `404 Not Found` | `ANALYSIS_NOT_FOUND` | No analysis has been run yet for this incident |
+| `404 Not Found` | `INCIDENT_NOT_FOUND` | Incident not found |
+
+---
+
+## Agent Tool Registry — Autonomous Action Prohibition (FR-043, NG-02, NG-03)
+
+The agent has a **read-only advisory tool registry** (`ToolRegistry`). The following production-mutating tools are permanently prohibited and will raise `AutonomousActionProhibitedError` at registration time:
+
+| Prohibited Tool | Reason |
+|---|---|
+| `kubectl` | Direct production cluster mutation |
+| `rollback` / `rollback_api` | Direct deployment rollback |
+| `delete_production_resource` | Production resource deletion |
+| `restart_production_service` | Live service restart |
+| `database_mutation_tool` | Database write mutation |
+
+Any `AgentTool` registered with `is_read_only=False` is also prohibited.
+
+**Permitted advisory tools:**
+- `recall_memory` — Query Hindsight for prior operational experiences
+- `search_runbooks` — Search runbook reference catalog
+- `inspect_telemetry` — Read current metrics and telemetry facts
+- `read_logs` — Inspect log excerpts and error signatures
+- `generate_comparison` — Compare current evidence against historical experience
+- `generate_hypotheses` — Formulate candidate root-cause explanations
+- `generate_recommendations` — Formulate advisory investigation and resolution guidance
