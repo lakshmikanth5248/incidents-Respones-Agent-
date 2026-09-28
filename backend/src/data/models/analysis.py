@@ -5,7 +5,7 @@ Persists immutable, revisioned analysis artefacts allowing prior revisions to re
 """
 
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Integer, Float, DateTime, JSON, ForeignKey
+from sqlalchemy import Column, String, Integer, Float, DateTime, JSON, ForeignKey, Boolean
 from src.data.database import Base
 
 
@@ -35,6 +35,10 @@ class IncidentAnalysis(Base):
     recall_record = Column(JSON, nullable=True)
     memory_status = Column(String(32), nullable=True)
 
+    # Memory Isolation tracking (Feature 15)
+    memory_isolated = Column(Boolean, nullable=False, default=False)
+    analysis_mode = Column(String(32), nullable=False, default="normal")
+
     # Observability & cost metrics (BE-022)
     prompt_tokens = Column(Integer, nullable=False, default=0)
     completion_tokens = Column(Integer, nullable=False, default=0)
@@ -50,6 +54,10 @@ class IncidentAnalysis(Base):
             "revision": self.revision,
             "status": "ready_for_recall" if not self.hypotheses else "hypotheses_generated",
             "memory_status": self.memory_status,
+            "memory_isolated": self.memory_isolated,
+            "analysis_mode": self.analysis_mode,
+            "analysis_label": "memory-free analysis" if self.memory_isolated else "memory-informed analysis",
+            "mode_label": "memory-free analysis" if self.memory_isolated else "memory-informed analysis",
             "recall_record": self.recall_record,
             "symptom_analysis": self.symptom_analysis,
             "comparisons": self.comparisons or [],

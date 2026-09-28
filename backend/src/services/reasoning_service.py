@@ -122,7 +122,7 @@ class ReasoningService:
                 matching_signals=[],
                 differences=[
                     f"Memory status: {memory_context.status}",
-                    "No historical comparison available"
+                    "No historical experience available."
                 ],
                 historical_patterns=[],
                 conflicts=[],
@@ -230,15 +230,16 @@ class ReasoningService:
                 differences.append("Recent changes: unknown in current evidence")
 
             # 7. Historical Patterns from Recalled Experience
+            historical_patterns.append("Historical experience found.")
             for e in entries:
-                if e.entry_type == EntryType.ROOT_CAUSE.value:
-                    historical_patterns.append(f"Prior root cause ({e.source_incident_ref}): {e.body}")
+                if e.entry_type in [EntryType.ROOT_CAUSE.value, "root_cause"]:
+                    historical_patterns.append(f"Previous root cause ({e.source_incident_ref}): {e.body}")
                     provenance.append({
                         "source": f"recalled_memory:{e.entry_id}",
                         "statement": f"Root cause established as: {e.body}"
                     })
-                elif e.entry_type in [EntryType.RESOLUTION_PROCEDURE.value, EntryType.SUCCESSFUL_ACTION.value]:
-                    historical_patterns.append(f"Prior resolution ({e.outcome_label or 'tested'}): {e.body}")
+                elif e.entry_type in [EntryType.RESOLUTION_PROCEDURE.value, EntryType.SUCCESSFUL_ACTION.value, "resolution", "resolution_procedure"]:
+                    historical_patterns.append(f"Previous resolution ({e.outcome_label or 'tested'}): {e.body}")
                     provenance.append({
                         "source": f"recalled_memory:{e.entry_id}",
                         "statement": f"Resolution procedure: {e.body} (outcome: {e.outcome_label})"

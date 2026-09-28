@@ -204,6 +204,8 @@ class AnalysisService:
             recommendations=recommendations_list,
             recall_record=recall_record_dict,
             memory_status=memory_status_str,
+            memory_isolated=is_isolated,
+            analysis_mode="memory_isolated" if is_isolated else "normal",
             prompt_tokens=model_output.prompt_tokens,
             completion_tokens=model_output.completion_tokens,
             total_tokens=model_output.total_tokens,
@@ -216,6 +218,8 @@ class AnalysisService:
         incident.analysis_revision = next_revision
         incident.analysis_id = persisted.id
         incident.memory_status = memory_status_str
+        incident.memory_isolated = is_isolated
+        incident.analysis_mode = "memory_isolated" if is_isolated else "normal"
         incident.recall_record = recall_record_dict
         if incident.status in ["created", "analyzing"]:
             incident.status = "analyzed"
@@ -235,6 +239,8 @@ class AnalysisService:
                 "analysis_id": persisted.id,
                 "revision": next_revision,
                 "memory_status": memory_status_str,
+                "memory_isolated": is_isolated,
+                "analysis_mode": "memory_isolated" if is_isolated else "normal",
                 "duration_ms": model_output.duration_ms,
                 "total_tokens": model_output.total_tokens
             }

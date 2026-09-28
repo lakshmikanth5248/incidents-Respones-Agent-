@@ -152,6 +152,10 @@ class AnalysisResponse(BaseModel):
     revision: int
     status: str
     memory_status: Optional[str] = None
+    memory_isolated: bool = False
+    analysis_mode: str = "normal"
+    analysis_label: Optional[str] = None
+    mode_label: Optional[str] = None
     recall_record: Optional[Dict[str, Any]] = None
     symptom_analysis: CurrentIncidentInterpretation
     comparisons: List[ComparisonItem] = Field(default_factory=list)

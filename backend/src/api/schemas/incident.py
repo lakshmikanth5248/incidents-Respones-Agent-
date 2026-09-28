@@ -137,6 +137,8 @@ class IncidentResponse(BaseModel):
     revision: int = 1
     analysis_revision: int = 0
     memory_status: Optional[str] = None
+    memory_isolated: bool = False
+    analysis_mode: str = "normal"
     resolution_status: str = "unresolved"
     postmortem_status: str = "none"
     verification_status: str = "unverified"
