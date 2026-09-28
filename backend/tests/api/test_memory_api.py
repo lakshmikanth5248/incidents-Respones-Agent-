@@ -97,12 +97,16 @@ def test_api_recall_validation_empty_query(client: TestClient):
 
 # --------------------------------------------------------------------------
 # API-012: POST /api/memory/retain
+#
+# Feature 13 gates retention on a confirmed post-mortem, so these tests drive
+# the real lifecycle. See tests/api/test_memory_retain.py for the full matrix.
 # --------------------------------------------------------------------------
 
-def test_api_retain_success(client: TestClient):
+def test_api_retain_success(client, reset_memory_double, confirmed_postmortem_incident):
     """Test memory retention via API-012."""
+    inc_id = confirmed_postmortem_incident()
     payload = {
-        "incident_id": "inc-101",
+        "incident_id": inc_id,
         "confirmed": True,
         "entries": [
             {
@@ -112,7 +116,7 @@ def test_api_retain_success(client: TestClient):
                 "body": "JWKS cache TTL was set to 0 causing endpoint rate limiting.",
                 "outcome_label": "successful",
                 "confidence": "confirmed",
-                "source_incident_ref": "inc-101",
+                "source_incident_ref": inc_id,
             },
             {
                 "entry_type": "resolution_procedure",
@@ -120,7 +124,7 @@ def test_api_retain_success(client: TestClient):
                 "body": "Updated JWKS cache TTL to 3600 seconds in ConfigMap and rolled pods.",
                 "outcome_label": "successful",
                 "confidence": "confirmed",
-                "source_incident_ref": "inc-101",
+                "source_incident_ref": inc_id,
             }
         ]
     }
@@ -133,17 +137,18 @@ def test_api_retain_success(client: TestClient):
     assert all(r["status"] == "retained" for r in data["results"])
 
 
-def test_api_retain_unconfirmed_rejected(client: TestClient):
+def test_api_retain_unconfirmed_rejected(client, reset_memory_double, confirmed_postmortem_incident):
     """Test retention without explicit confirmation is rejected with 409 Conflict."""
+    inc_id = confirmed_postmortem_incident()
     payload = {
-        "incident_id": "inc-102",
+        "incident_id": inc_id,
         "confirmed": False,
         "entries": [
             {
                 "entry_type": "root_cause",
                 "service": "orders",
                 "body": "Redis evictions caused session loss",
-                "source_incident_ref": "inc-102",
+                "source_incident_ref": inc_id,
             }
         ]
     }
@@ -153,17 +158,18 @@ def test_api_retain_unconfirmed_rejected(client: TestClient):
     assert data["error"]["code"] == "CONFLICT"
 
 
-def test_api_retain_secret_detected_rejected(client: TestClient):
+def test_api_retain_secret_detected_rejected(client, reset_memory_double, confirmed_postmortem_incident):
     """Test candidate containing a secret token is blocked with 422 pre-write."""
+    inc_id = confirmed_postmortem_incident()
     payload = {
-        "incident_id": "inc-103",
+        "incident_id": inc_id,
         "confirmed": True,
         "entries": [
             {
                 "entry_type": "root_cause",
                 "service": "orders",
                 "body": "Secret key api_key = AKIAIOSFODNN7EXAMPLE used in config",
-                "source_incident_ref": "inc-103",
+                "source_incident_ref": inc_id,
             }
         ]
     }

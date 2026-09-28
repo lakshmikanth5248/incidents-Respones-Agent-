@@ -24,12 +24,18 @@ from src.api.schemas.incident import (
 from src.api.schemas.analysis import AnalysisRequest, AnalysisResponse, RecommendationItem
 from src.api.schemas.resolution import ResolveIncidentRequest, ResolutionResponse
 from src.api.schemas.verification import VerificationRequest, VerificationResponse
+from src.api.schemas.postmortem import (
+    PostMortemConfirmRequest,
+    PostMortemGenerateRequest,
+    PostMortemResponse,
+)
 from src.api.errors import APIException
 from src.data.repositories.incident_repository import IncidentRepository
 from src.services.incident_service import IncidentService
 from src.services.analysis_service import AnalysisService
 from src.services.resolution_service import ResolutionService
 from src.services.verification_service import VerificationService
+from src.services.postmortem_service import PostMortemService
 from src.memory.service import memory_service
 from src.memory.schemas import RecallRequest, MemoryStatus
 
@@ -455,4 +461,74 @@ def get_incident_verification(
         **res_dict,
         incident_status=incident.status if incident else "unknown",
     )
+
+@router.post(
+    "/{id}/postmortem",
+    response_model=PostMortemResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Generate post-mortem draft (Feature 11 / API-009)",
+    description=(
+        "Generate a structured post-mortem draft for a resolved or mitigated incident. "
+        "Strictly enforces preconditions, provenance, root-cause source, and anti-hallucination guards."
+    ),
+)
+def generate_incident_postmortem(
+    id: str,
+    request: PostMortemGenerateRequest = PostMortemGenerateRequest(),
+    x_operator: str = Header(None, alias="X-Operator"),
+    db: Session = Depends(get_db),
+) -> PostMortemResponse:
+    """Generate post-mortem draft for a resolved incident."""
+    actor = x_operator or "sre-lead"
+    record = PostMortemService.generate_postmortem(
+        db=db,
+        incident_id=id,
+        request=request,
+        actor=actor,
+    )
+    return PostMortemResponse(**record.to_dict())
+
+
+@router.post(
+    "/{id}/postmortem/confirm",
+    response_model=PostMortemResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Confirm post-mortem draft (FR-056, D-12)",
+    description=(
+        "Confirm the post-mortem as the authoritative incident record. "
+        "Confirmation is the human gate that makes the incident's experience "
+        "eligible for retention in Hindsight (FR-058). Idempotent."
+    ),
+)
+def confirm_incident_postmortem(
+    id: str,
+    request: PostMortemConfirmRequest = PostMortemConfirmRequest(),
+    x_operator: Optional[str] = Header("sre-lead", alias="X-Operator"),
+    db: Session = Depends(get_db),
+) -> PostMortemResponse:
+    """Confirm a post-mortem draft, unlocking Hindsight retention."""
+    actor = x_operator or "sre-lead"
+    record = PostMortemService.confirm_postmortem(
+        db=db,
+        incident_id=id,
+        request=request,
+        actor=actor,
+    )
+    return PostMortemResponse(**record.to_dict())
+
+
+@router.get(
+    "/{id}/postmortem",
+    response_model=PostMortemResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get incident post-mortem draft (Feature 11 / API-010)",
+    description="Retrieve the current post-mortem draft for an incident.",
+)
+def get_incident_postmortem(
+    id: str,
+    db: Session = Depends(get_db),
+) -> PostMortemResponse:
+    """Retrieve post-mortem draft for an incident."""
+    record = PostMortemService.get_postmortem(db=db, incident_id=id)
+    return PostMortemResponse(**record.to_dict())
 

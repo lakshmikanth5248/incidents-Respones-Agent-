@@ -4,11 +4,14 @@ Conforms strictly to PRD §12.3 (API-011, API-012, API-013, API-014) and Feature
 Route handlers interact EXCLUSIVELY with the MemoryService interface.
 """
 
-from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Query, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, Header, Query, status
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from src.api.errors import APIException
+from src.config import settings
+from src.data.database import get_db
 from src.memory.schemas import (
     MemoryStatus,
     MemoryEntry,
@@ -20,6 +23,7 @@ from src.memory.schemas import (
     FlagExperienceResponse,
 )
 from src.memory.service import memory_service
+from src.services.retention_service import RetentionService
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
@@ -67,12 +71,27 @@ def recall_memory(request: RecallRequest) -> RecallResult:
     "/retain",
     response_model=RetainResult,
     status_code=status.HTTP_200_OK,
-    summary="Retain confirmed operational experience (API-012)",
-    description="Write validated memory entries for a confirmed incident. Gated by explicit server-side confirmation.",
+    summary="Retain confirmed operational experience (API-012, Feature 13)",
+    description=(
+        "Write validated memory entries for a confirmed incident into Hindsight. "
+        "Flow: resolved incident -> confirmed post-mortem -> memory candidate -> "
+        "server-side validation -> secret scan -> Hindsight retain -> retained entry IDs. "
+        "Preconditions (server-side, never trusted from the client): the incident must "
+        "exist (404) and its post-mortem must be confirmed (409). Retention is "
+        "idempotent per incident and entry identity: a repeated request replays the "
+        "original memory_entry_id instead of writing a duplicate. A write that only "
+        "partially succeeds reports status='partial' with per-entry results and "
+        "preserves the composed record for retry."
+    ),
 )
-def retain_memory(request: RetainRequest) -> RetainResult:
-    """Retain memory candidates via MemoryService."""
-    return memory_service.retain(request)
+def retain_memory(
+    request: RetainRequest,
+    x_operator: Optional[str] = Header(None, alias="X-Operator"),
+    db: Session = Depends(get_db),
+) -> RetainResult:
+    """Retain confirmed operational experience via RetentionService."""
+    actor = x_operator or settings.DEFAULT_OPERATOR
+    return RetentionService.retain(db=db, request=request, actor=actor)
 
 
 @router.get(

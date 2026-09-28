@@ -15,6 +15,30 @@ class SecretScanResult(BaseModel):
     detected_types: List[str] = []
 
 
+class MemoryCandidateValidationError(ValueError):
+    """
+    Raised when a memory candidate fails server-side validation.
+    Carries a machine-readable code and the offending field so the API can report
+    WHICH entry is invalid without ever echoing the entry body (SEC-008).
+    """
+
+    def __init__(self, code: str, message: str, field: Optional[str] = None):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.field = field
+
+
+# Entry types that describe an action or procedure and therefore require an
+# outcome label (RP-012, HM-010).
+OUTCOME_REQUIRED_ENTRY_TYPES = {
+    "resolution_procedure",
+    "successful_action",
+    "failed_action",
+    "runbook_outcome",
+}
+
+
 # Compiled patterns for secret detection
 SECRET_PATTERNS = [
     ("api_key", re.compile(r"\b(?:sk-[a-zA-Z0-9_\-]{20,}|AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9_]{50,}|xox[baprs]-[0-9a-zA-Z\-]{10,})\b", re.IGNORECASE)),
@@ -69,6 +93,77 @@ class ValidationService:
             has_secrets=bool(detected_types),
             detected_types=sorted(list(detected_types))
         )
+
+    @classmethod
+    def validate_memory_candidate(
+        cls,
+        entry_type: Optional[str],
+        body: Optional[str],
+        confidence: Optional[str] = None,
+        outcome_label: Optional[str] = None,
+    ) -> None:
+        """
+        Server-side validation of a composed memory candidate (RP-010, RP-011, RP-012, HM-033).
+
+        The client is never trusted: the vocabulary is re-checked here so an
+        out-of-contract value cannot reach Hindsight. Raises
+        MemoryCandidateValidationError; never raises for a missing outcome label on
+        an action/procedure entry (that entry is skipped, not rejected).
+        """
+        from src.memory.schemas import ConfidenceLevel, EntryType, OutcomeLabel
+
+        valid_entry_types = {e.value for e in EntryType}
+        if not entry_type or not str(entry_type).strip():
+            raise MemoryCandidateValidationError(
+                code="INVALID_ENTRY_TYPE",
+                message="entry_type is required for every memory entry.",
+                field="entry_type",
+            )
+        if entry_type not in valid_entry_types:
+            raise MemoryCandidateValidationError(
+                code="INVALID_ENTRY_TYPE",
+                message=(
+                    f"entry_type '{entry_type}' is not a supported memory entry type. "
+                    f"Allowed values: {sorted(valid_entry_types)}."
+                ),
+                field="entry_type",
+            )
+
+        if not body or not str(body).strip():
+            raise MemoryCandidateValidationError(
+                code="INVALID_ENTRY_BODY",
+                message="body is required and must express exactly one reusable fact (HM-033).",
+                field="body",
+            )
+
+        if confidence:
+            valid_confidence = {c.value for c in ConfidenceLevel}
+            if confidence not in valid_confidence:
+                raise MemoryCandidateValidationError(
+                    code="INVALID_CONFIDENCE",
+                    message=(
+                        f"confidence '{confidence}' is not valid. "
+                        f"Allowed values: {sorted(valid_confidence)}."
+                    ),
+                    field="confidence",
+                )
+
+        if outcome_label:
+            valid_outcomes = {o.value for o in OutcomeLabel}
+            if outcome_label not in valid_outcomes:
+                raise MemoryCandidateValidationError(
+                    code="INVALID_OUTCOME_LABEL",
+                    message=(
+                        f"outcome_label '{outcome_label}' is not valid. "
+                        f"Allowed values: {sorted(valid_outcomes)}."
+                    ),
+                    field="outcome_label",
+                )
+
+    @classmethod
+    def memory_candidate_requires_outcome(cls, entry_type: Optional[str]) -> bool:
+        """RP-012: action/procedure entries carry a mandatory outcome label."""
+        return entry_type in OUTCOME_REQUIRED_ENTRY_TYPES
 
     @classmethod
     def validate_symptom_description(cls, text: Optional[str]) -> str:

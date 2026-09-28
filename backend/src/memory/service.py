@@ -14,7 +14,6 @@ from src.services.validation_service import ValidationService
 from src.api.errors import APIException
 from src.memory.schemas import (
     MemoryStatus,
-    EntryType,
     OutcomeLabel,
     ConfidenceLevel,
     FlagType,
@@ -320,6 +319,40 @@ class MemoryService:
             recall_record=record,
         )
 
+    def persist_entry(self, payload: Dict[str, Any]) -> str:
+        """
+        Write exactly one composed entry to Hindsight and return its stable memory id.
+
+        This is the single low-level write primitive. Callers own the failure policy
+        (per-entry error capture, partial reporting, retry), so any Hindsight error is
+        propagated rather than swallowed here.
+
+        Raises HindsightClientError subclasses (unavailable / timeout / malformed / api)
+        when the write cannot be completed.
+        """
+        response = self._client.retain(payload)
+        mem_id = response.get("entry_id") or response.get("id")
+        if not mem_id:
+            raise HindsightMalformedResponseError(
+                "Hindsight retain response did not include a memory entry id."
+            )
+        return str(mem_id)
+
+    def build_retain_payload(self, candidate: MemoryCandidate) -> Dict[str, Any]:
+        """Compose the Hindsight write payload for a validated memory candidate."""
+        return {
+            "entry_type": candidate.entry_type,
+            "service": candidate.service,
+            "component": candidate.component,
+            "body": candidate.body,
+            "outcome_label": candidate.outcome_label,
+            "confidence": candidate.confidence,
+            "source_incident_ref": candidate.source_incident_ref,
+            "provenance_group_id": candidate.provenance_group_id,
+            "is_synthetic": candidate.is_synthetic,
+            "supersedes": candidate.supersedes,
+        }
+
     def retain(self, request: RetainRequest) -> RetainResult:
         """
         Retain structured, validated memory entries in Hindsight.
@@ -328,6 +361,10 @@ class MemoryService:
         - Secret scanning on entry bodies (SEC-008, HM-015)
         - Outcome label requirement for actions/procedures (RP-012)
         - Graceful handling of partial retention (AC2-07a, ERR-03)
+
+        NOTE: this is the stateless memory-gateway path. The full retention workflow
+        (incident + confirmed post-mortem preconditions, identity-based idempotency,
+        retry ledger) lives in `src.services.retention_service.RetentionService`.
         """
         # 1. Enforce confirmation server-side
         if not request.confirmed:
@@ -341,18 +378,29 @@ class MemoryService:
         if not request.entries:
             return RetainResult(
                 status="retained",
+                incident_id=request.incident_id,
                 results=[],
                 skipped=[],
-                validation_report={"valid_entries": 0, "rejected_entries": 0}
+                validation_report={
+                    "submitted_entries": 0,
+                    "valid_entries": 0,
+                    "rejected_entries": 0,
+                    "secret_scan": "passed",
+                },
             )
 
         results: List[RetainEntryResult] = []
         skipped: List[Dict[str, str]] = []
-        validation_report = {"valid_entries": 0, "rejected_entries": 0}
+        validation_report: Dict[str, Any] = {
+            "submitted_entries": len(request.entries),
+            "valid_entries": 0,
+            "rejected_entries": 0,
+            "secret_scan": "passed",
+        }
 
         # 2. Validate and secret-scan each candidate
-        validated_candidates: List[MemoryCandidate] = []
-        for candidate in request.entries:
+        validated_candidates: List[Tuple[int, MemoryCandidate]] = []
+        for index, candidate in enumerate(request.entries):
             # Secret scan pre-write (SEC-008, HM-015)
             scan_res = ValidationService.scan_for_secrets(candidate.body)
             if scan_res.has_secrets:
@@ -365,51 +413,42 @@ class MemoryService:
                     ),
                     status_code=getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422),
                     retryable=False,
-                    details={"entry_type": candidate.entry_type, "detected_secret_type": types_str}
+                    details={
+                        "entry_index": index,
+                        "entry_type": candidate.entry_type,
+                        "detected_secret_type": types_str,
+                    }
                 )
 
             # Procedure/Action outcome validation (RP-012)
-            if candidate.entry_type in (
-                EntryType.RESOLUTION_PROCEDURE.value,
-                EntryType.SUCCESSFUL_ACTION.value,
-                EntryType.FAILED_ACTION.value,
-                EntryType.RUNBOOK_OUTCOME.value,
-            ) and not candidate.outcome_label:
+            if ValidationService.memory_candidate_requires_outcome(candidate.entry_type) and not candidate.outcome_label:
                 skipped.append({
+                    "entry_index": str(index),
                     "entry_type": candidate.entry_type,
                     "reason": "Missing required outcome_label for procedure/action entry (RP-012)"
                 })
                 validation_report["rejected_entries"] += 1
                 continue
 
-            validated_candidates.append(candidate)
+            validated_candidates.append((index, candidate))
             validation_report["valid_entries"] += 1
 
         # 3. Write validated candidates to Hindsight
         succeeded_count = 0
         failed_count = 0
+        memory_entry_ids: List[str] = []
 
-        for candidate in validated_candidates:
-            payload = {
-                "entry_type": candidate.entry_type,
-                "service": candidate.service,
-                "component": candidate.component,
-                "body": candidate.body,
-                "outcome_label": candidate.outcome_label,
-                "confidence": candidate.confidence,
-                "source_incident_ref": candidate.source_incident_ref,
-                "provenance_group_id": candidate.provenance_group_id,
-                "is_synthetic": candidate.is_synthetic,
-                "supersedes": candidate.supersedes,
-            }
+        for index, candidate in validated_candidates:
+            payload = self.build_retain_payload(candidate)
 
             try:
-                res = self._client.retain(payload)
-                mem_id = res.get("entry_id")
+                mem_id = self.persist_entry(payload)
+                memory_entry_ids.append(mem_id)
                 results.append(RetainEntryResult(
                     status="retained",
                     memory_entry_id=mem_id,
-                    entry_type=candidate.entry_type
+                    entry_type=candidate.entry_type,
+                    entry_index=index,
                 ))
                 succeeded_count += 1
             except Exception as retain_err:
@@ -419,6 +458,7 @@ class MemoryService:
                 results.append(RetainEntryResult(
                     status="failed",
                     entry_type=candidate.entry_type,
+                    entry_index=index,
                     error=str(retain_err)
                 ))
                 failed_count += 1
@@ -443,9 +483,13 @@ class MemoryService:
 
         return RetainResult(
             status=overall_status,
+            incident_id=request.incident_id,
+            memory_entry_id=memory_entry_ids[0] if memory_entry_ids else None,
+            memory_entry_ids=memory_entry_ids,
             results=results,
             skipped=skipped,
             validation_report=validation_report,
+            retry_pending=failed_count > 0,
         )
 
     def get_experience(self, entry_id: str) -> Optional[MemoryEntry]:

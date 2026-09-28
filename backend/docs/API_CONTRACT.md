@@ -504,7 +504,17 @@ Independent operator-initiated memory recall against Hindsight via the isolated 
 ### 3.11 `POST /api/memory/retain` — Retain Operational Experience (API-012)
 
 #### Description
-Retains validated, confirmed reusable conclusions in Hindsight. Enforces server-side confirmation (`confirmed: true`) and pre-write secret scanning.
+Retains validated, confirmed reusable conclusions in Hindsight. Enforces server-side confirmation and pre-write secret scanning.
+
+Retention is gated on the **stored** post-mortem state, not the client flag alone:
+
+1. The incident must exist (`404 INCIDENT_NOT_FOUND`).
+2. The request must carry `confirmed: true` and the post-mortem must exist in state
+   `confirmed` (`409 CONFLICT` / `POSTMORTEM_NOT_FOUND` / `POSTMORTEM_NOT_CONFIRMED`).
+3. Every entry is validated and secret-scanned **before any write occurs**; a secret
+   anywhere in the batch rejects the whole request with `422 SECRET_DETECTED`.
+4. Provenance is server-authoritative: a missing `service` is inherited from the
+   incident and `source_incident_ref` is always forced to the request's `incident_id`.
 
 #### Request Body
 ```json
@@ -525,30 +535,88 @@ Retains validated, confirmed reusable conclusions in Hindsight. Enforces server-
 }
 ```
 
+`service` and `source_incident_ref` may be omitted; the server fills them from the incident.
+
 #### Success Response: `200 OK`
 ```json
 {
   "status": "retained",
+  "incident_id": "INC-2026-0001",
+  "retain_id": "RET-INC-2026-0001-1BE9816D",
+  "memory_entry_id": "mem-e3f4a5b6",
+  "memory_entry_ids": ["mem-e3f4a5b6"],
   "results": [
     {
       "status": "retained",
       "memory_entry_id": "mem-e3f4a5b6",
       "entry_type": "root_cause",
+      "entry_index": 0,
+      "entry_key": "9b2af605b396b32079a31ae6efb52bf3",
       "error": null
     }
   ],
   "skipped": [],
   "validation_report": {
+    "submitted_entries": 1,
     "valid_entries": 1,
-    "rejected_entries": 0
-  }
+    "rejected_entries": 0,
+    "provenance_corrected": 0,
+    "secret_scan": "passed",
+    "incident_service": "checkout-service",
+    "written_entries": 1,
+    "idempotent_entries": 0,
+    "failed_entries": 0,
+    "retain_id": "RET-INC-2026-0001-1BE9816D",
+    "postmortem_status": "confirmed",
+    "postmortem_id": "pm-412aa89bd173"
+  },
+  "idempotent": false,
+  "retry_pending": false,
+  "retained_at": "2026-09-28T11:00:00+00:00"
 }
 ```
 
+#### Response Semantics
+
+`status` is never reported as complete success when any entry failed (D-11, ERR-03):
+
+| `status` | Meaning |
+|---|---|
+| `retained` | Every eligible entry is now in Hindsight (written or already present) |
+| `partial` | At least one entry was written **and** at least one failed; `retry_pending` is `true` |
+| `failed` | No entry was written; surfaced as `503` with the composed records preserved |
+
+Per-entry `results[].status` values:
+
+| Value | Meaning |
+|---|---|
+| `retained` | Written to Hindsight by this request |
+| `already_retained` | The same `(incident_id, entry identity)` already exists; no duplicate written |
+| `failed` | The write did not complete; the composed record is persisted for retry |
+| `skipped` | Rejected by server-side validation; never reached Hindsight |
+
+`skipped[]` reports validation rejections separately from write failures:
+```json
+{ "entry_index": 1, "entry_type": "resolution_procedure", "reason": "Missing required outcome_label for procedure/action entry (RP-012)" }
+```
+
+#### Idempotency
+Each entry gets a stable SHA-256 `entry_key` over its identity (incident, entry type,
+service, component, body, outcome label, confidence). Re-submitting the same entries
+returns `already_retained` with the original `memory_entry_id`, sets `idempotent: true`,
+and writes nothing to Hindsight.
+
 #### Error Responses
-* `409 Conflict` — Unconfirmed retention attempt (`confirmed: false`).
-* `422 Unprocessable Content` — Secret detected in memory candidate body (`SECRET_DETECTED`).
-* `503 Service Unavailable` — Memory service unreachable during write (`HINDSIGHT_UNAVAILABLE`).
+* `404 Not Found` — Incident does not exist (`INCIDENT_NOT_FOUND`).
+* `409 Conflict` — `confirmed` is `false` (`CONFLICT`), no post-mortem exists
+  (`POSTMORTEM_NOT_FOUND`), or the stored post-mortem is not `confirmed`
+  (`POSTMORTEM_NOT_CONFIRMED`).
+* `422 Unprocessable Content` — Secret detected in a memory candidate body
+  (`SECRET_DETECTED`), or an entry fails server-side validation. The response reports
+  only the offending entry index, entry type, and secret category; credentials are never
+  echoed.
+* `503 Service Unavailable` — Hindsight unreachable during write (`HINDSIGHT_UNAVAILABLE`).
+  `retryable: true`, and the composed records are persisted so the request can be retried.
 
 ---
 

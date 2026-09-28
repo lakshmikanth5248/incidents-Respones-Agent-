@@ -118,17 +118,21 @@ class MemoryEntry(BaseModel):
 class MemoryCandidate(BaseModel):
     """
     Composed Memory Candidate submitted for retention (PRD §5.1, DM-003).
-    Must pass validation and secret scanning before being retained in Hindsight.
+    Must pass server-side validation and secret scanning before being retained in Hindsight.
+
+    `service` and `source_incident_ref` are optional on the wire: provenance is
+    server-authoritative (RP-013, D-03) and is derived from the incident record
+    when the client omits or contradicts it.
     """
     model_config = ConfigDict(extra="ignore")
 
     entry_type: str
-    service: str
+    service: Optional[str] = None
     component: Optional[str] = None
     body: str
     outcome_label: Optional[str] = None
     confidence: str = ConfidenceLevel.CONFIRMED.value
-    source_incident_ref: str
+    source_incident_ref: Optional[str] = None
     provenance_group_id: Optional[str] = None
     is_synthetic: bool = True
     supersedes: Optional[str] = None
@@ -238,30 +242,76 @@ class RetainRequest(BaseModel):
 
 
 class RetainEntryResult(BaseModel):
-    """Individual entry retention result."""
+    """
+    Individual entry retention result.
+
+    status values:
+      retained           — the entry was written to Hindsight by this request
+      already_retained   — the identical entry (same incident + entry identity) already
+                           exists in Hindsight; no duplicate was written (RP-015, D-10)
+      failed             — the write did not complete; the composed record is preserved
+                           for retry (RP-014, FR-063)
+      skipped            — rejected by server-side validation; never reached Hindsight
+    """
     model_config = ConfigDict(extra="ignore")
 
-    status: Literal["retained", "failed", "skipped"]
+    status: Literal["retained", "already_retained", "failed", "skipped"]
     memory_entry_id: Optional[str] = None
     entry_type: Optional[str] = None
+    entry_index: Optional[int] = None
+    entry_key: Optional[str] = None
     error: Optional[str] = None
 
 
+class RetainSkippedEntry(BaseModel):
+    """
+    A submitted entry that never reached Hindsight because server-side validation
+    rejected it (D-12). Reported separately from `results` so a client can tell a
+    deliberate skip apart from a write failure.
+    """
+    model_config = ConfigDict(extra="ignore")
+
+    entry_index: int = Field(..., description="Zero-based index in the submitted entries array")
+    entry_type: Optional[str] = None
+    reason: str
+
+
 class RetainResult(BaseModel):
-    """Aggregate response for memory retention operation."""
+    """
+    Aggregate response for a memory retention operation (API-012, FR-058–FR-066).
+
+    `status` is never reported as complete success when any entry failed: a mixed
+    outcome is always `partial` (D-11, RP-014, ERR-03).
+    """
     model_config = ConfigDict(extra="ignore")
 
     status: Literal["retained", "partial", "failed"]
+    incident_id: str
+    retain_id: Optional[str] = None
+    memory_entry_id: Optional[str] = None
+    memory_entry_ids: List[str] = Field(default_factory=list)
     results: List[RetainEntryResult] = Field(default_factory=list)
-    skipped: List[Dict[str, str]] = Field(default_factory=list)
+    skipped: List[RetainSkippedEntry] = Field(default_factory=list)
     validation_report: Dict[str, Any] = Field(default_factory=dict)
+    idempotent: bool = False
+    retry_pending: bool = False
+    retained_at: Optional[str] = Field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "status": self.status,
+            "incident_id": self.incident_id,
+            "retain_id": self.retain_id,
+            "memory_entry_id": self.memory_entry_id,
+            "memory_entry_ids": self.memory_entry_ids,
             "results": [r.model_dump() for r in self.results],
-            "skipped": self.skipped,
+            "skipped": [s.model_dump() for s in self.skipped],
             "validation_report": self.validation_report,
+            "idempotent": self.idempotent,
+            "retry_pending": self.retry_pending,
+            "retained_at": self.retained_at,
         }
 
 
