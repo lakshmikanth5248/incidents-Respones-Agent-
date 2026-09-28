@@ -4,12 +4,12 @@
       "id": "user-admin-01",
       "name": "D. Mercer (Lead SRE)",
       "email": "admin@aegis.corp",
-      "password_hash": "$2b$10$R7LdXdnQpIe8VNCUJAPTh.l6CkSymmTMQyNc/CCtSHkJJgbSU.cSS",
+      "password_hash": "$2b$10$4sNi8yWZCz.j6NM3eVvUqetUt/mGTjrVVCLFJsiFPY3xKfoqNy0ly",
       "role": "ADMIN",
       "avatar_url": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=128&q=80",
       "created_at": "2026-09-28T10:55:23.629Z",
       "updated_at": "2026-09-28T17:48:16.747Z",
-      "last_login_at": "2026-09-28T17:48:16.747Z",
+      "last_login_at": "2026-09-28T19:40:46.022Z",
       "is_active": true,
       "roles": [
         "ADMIN",
@@ -38,7 +38,7 @@
       "avatar_url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=128&q=80",
       "created_at": "2026-09-28T10:55:23.629Z",
       "updated_at": "2026-09-28T10:55:23.629Z",
-      "last_login_at": null,
+      "last_login_at": "2026-09-28T19:43:27.462Z",
       "is_active": true,
       "roles": [
         "RESPONDER"
@@ -64,7 +64,7 @@
       "avatar_url": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=128&q=80",
       "created_at": "2026-09-28T10:55:23.629Z",
       "updated_at": "2026-09-28T10:55:23.629Z",
-      "last_login_at": null,
+      "last_login_at": "2026-09-28T19:39:07.700Z",
       "is_active": true,
       "roles": [
         "VIEWER"
@@ -197,6 +197,19 @@
       },
       "created_at": "2026-09-28T11:20:07.047Z",
       "created_by": "demo-system"
+    },
+    {
+      "id": "evt-e514de59-f022-4ee5-8ea5-80c10cd6e81e",
+      "incident_id": "inc-2048",
+      "event_type": "AI_ANALYSIS_COMPLETED",
+      "message": "AI Incident Analysis formulated (Hindsight status: FOUND, Web Research: DISABLED)",
+      "source": "AEGIS_AGENT",
+      "metadata": {
+        "analysis_id": "analysis-29aff360",
+        "confidence": "HIGH"
+      },
+      "created_at": "2026-09-28T19:42:04.915Z",
+      "created_by": "D. Mercer (Lead SRE)"
     }
   ],
   "incident_signals": [
@@ -243,6 +256,34 @@
   ],
   "memories": [
     {
+      "id": "mem-de9c3e51",
+      "external_memory_id": "HINDSIGHT-EXP-INC-A",
+      "incident_id": "INC-A",
+      "title": "Payment Gateway Proxy Upstream Throttling & Thread Lock",
+      "summary": "Upstream payment processor network degradation caused socket hanging across core checkout pods.",
+      "memory_type": "POST_MORTEM_LESSON",
+      "status": "RELEVANT",
+      "source": "SRE Incident Post-Mortem (INC-A)",
+      "retained_at": "2026-09-28T19:42:12.560Z",
+      "last_recalled_at": null,
+      "recall_count": 0,
+      "is_demo": true,
+      "created_at": "2026-09-28T19:42:12.560Z",
+      "updated_at": "2026-09-28T19:42:12.560Z",
+      "what_happened": "Card processor silent degradation caused 504 timeouts and thread pool exhaustion.",
+      "agent_investigation": "AI correlated socket timeout spike with absence of internal CPU surge.",
+      "executed_response": "Split 50% non-critical traffic to secondary gateway and clamped socket timeouts to 1500ms.",
+      "verified_outcome": "Full checkout path restored in 11 minutes with zero loss.",
+      "retained_experience_rule": "When socket timeouts spike on payment proxy without internal CPU spikes, inspect upstream third-party status before rolling back application releases.",
+      "utility_score": 95,
+      "domain": "Payment & Billing",
+      "coords3D": [
+        -15.472662257779202,
+        9.69519024261766,
+        -14.893272562881732
+      ]
+    },
+    {
       "id": "mem-1987",
       "external_memory_id": "HINDSIGHT-EXP-1987",
       "incident_id": "INC-1987",
@@ -252,8 +293,8 @@
       "status": "RELEVANT",
       "source": "OpenTelemetry + WarRoom Transcript",
       "retained_at": "2024-08-14T16:30:00.000Z",
-      "last_recalled_at": "2026-09-28T14:04:15.000Z",
-      "recall_count": 8,
+      "last_recalled_at": "2026-09-28T19:42:04.912Z",
+      "recall_count": 9,
       "is_demo": true,
       "created_at": "2024-08-14T16:30:00.000Z",
       "updated_at": "2026-09-28T14:04:15.000Z",
@@ -355,7 +396,17 @@
       ]
     }
   ],
-  "memory_recalls": [],
+  "memory_recalls": [
+    {
+      "id": "recall-1b3c3a3c-1740-4957-b10c-726a20468131",
+      "incident_id": "inc-2048",
+      "memory_id": "mem-1987",
+      "reason": "Matched symptom vector [504 Timeout, Socket Hang, Upstream Egress] on service Checkout API / Payment Gateway",
+      "relevance": "HIGH",
+      "retrieved_context": "When socket timeouts spike on payment proxy without internal CPU spikes, inspect upstream third-party status before rolling back application releases.",
+      "created_at": "2026-09-28T19:42:04.912Z"
+    }
+  ],
   "hypotheses": [],
   "response_plans": [
     {
@@ -405,6 +456,76 @@
     }
   ],
   "audit_logs": [
+    {
+      "id": "audit-e8821c3f-9245-4e35-b930-c3978631ea6a",
+      "user_id": "user-responder-02",
+      "incident_id": null,
+      "action": "USER_LOGIN",
+      "entity_type": "USER",
+      "entity_id": "user-responder-02",
+      "metadata": {},
+      "ip_address": "127.0.0.1",
+      "created_at": "2026-09-28T19:43:27.464Z"
+    },
+    {
+      "id": "audit-21816bee-1cb2-42a2-a6dc-782c8209ea04",
+      "user_id": null,
+      "incident_id": "inc-2048",
+      "action": "AI_ANALYSIS_PERFORMED",
+      "entity_type": "INCIDENT",
+      "entity_id": "inc-2048",
+      "metadata": {
+        "analysis_id": "analysis-29aff360",
+        "hindsight_status": "FOUND",
+        "web_research": false
+      },
+      "ip_address": "127.0.0.1",
+      "created_at": "2026-09-28T19:42:04.916Z"
+    },
+    {
+      "id": "audit-266f0c1a-0a37-46b4-88ff-9467a1ec85a6",
+      "user_id": "user-admin-01",
+      "incident_id": null,
+      "action": "USER_LOGIN",
+      "entity_type": "USER",
+      "entity_id": "user-admin-01",
+      "metadata": {},
+      "ip_address": "127.0.0.1",
+      "created_at": "2026-09-28T19:40:46.026Z"
+    },
+    {
+      "id": "audit-53edad99-e54c-4d4a-b818-569c7e7ccc66",
+      "user_id": "user-viewer-03",
+      "incident_id": null,
+      "action": "USER_LOGIN",
+      "entity_type": "USER",
+      "entity_id": "user-viewer-03",
+      "metadata": {},
+      "ip_address": "127.0.0.1",
+      "created_at": "2026-09-28T19:39:07.706Z"
+    },
+    {
+      "id": "audit-4b0e3543-5c87-43a8-b083-e50a3b7a3d64",
+      "user_id": "user-responder-02",
+      "incident_id": null,
+      "action": "USER_LOGIN",
+      "entity_type": "USER",
+      "entity_id": "user-responder-02",
+      "metadata": {},
+      "ip_address": "127.0.0.1",
+      "created_at": "2026-09-28T19:31:13.790Z"
+    },
+    {
+      "id": "audit-87cb7edf-c8bb-414d-8b9b-d11ddd0427aa",
+      "user_id": "user-admin-01",
+      "incident_id": null,
+      "action": "USER_LOGIN",
+      "entity_type": "USER",
+      "entity_id": "user-admin-01",
+      "metadata": {},
+      "ip_address": "127.0.0.1",
+      "created_at": "2026-09-28T19:31:04.173Z"
+    },
     {
       "id": "audit-9533964a-f102-4cbf-be8c-eb190b0d034b",
       "user_id": "user-admin-01",

@@ -1146,7 +1146,10 @@ class AiDispatchReq(BaseModel):
 
 @router.post("/ai/analyze")
 def ai_analyze(req: AiAnalyzeReq):
-    matched_memory = memories_db[0] if memories_db else None
+    query_str = f"{req.incidentId} {req.incidentQuery or ''}".lower()
+    is_cold_start = any(k in query_str for k in ["cold-start", "coldstart", "inc-4544", "novel", "new-incident"])
+
+    matched_memory = None if is_cold_start else (memories_db[0] if memories_db else None)
 
     web_events = [
         {
@@ -1191,10 +1194,67 @@ def ai_analyze(req: AiAnalyzeReq):
         },
     ]
 
+    hindsight_memory_data = {
+        "status": "NO_RELEVANT_HINDSIGHT_EXPERIENCE" if is_cold_start else "FOUND",
+        "recalledIncidentId": None if is_cold_start else (matched_memory["incident_id"] if matched_memory else "INC-1987"),
+        "recalledTitle": None if is_cold_start else (matched_memory["title"] if matched_memory else "Payment Gateway Timeout Cascade"),
+        "similarityScore": 0.0 if is_cold_start else 0.914,
+        "retainedExperienceRule": (
+            "No prior operational experience found. Engaging Divide-and-Conquer first-principles analysis."
+            if is_cold_start
+            else (matched_memory.get("retained_experience_rule") if matched_memory else "")
+        ),
+        "provenance": None if is_cold_start else {
+            "sourceIncident": matched_memory.get("incident_id") if matched_memory else "INC-1987",
+            "date": matched_memory.get("retained_at") if matched_memory else "2024-08-14",
+            "verifiedOutcome": matched_memory.get("verified_outcome") if matched_memory else "",
+            "investigationPath": matched_memory.get("agent_investigation") if matched_memory else "",
+            "executedResponse": matched_memory.get("executed_response") if matched_memory else "",
+        },
+        "whyRecalled": (
+            "No vector precedent met the similarity threshold (0.70) in HyperGraph. Triggering Divide-and-Conquer decomposition."
+            if is_cold_start
+            else "Socket timeouts mimicking internal locks with zero CPU spike matched upstream payment route degradation."
+        ),
+    }
+
+    if is_cold_start:
+        primary_reasoning = (
+            "DIVIDE-AND-CONQUER REASONING (Cold-Start / Novel Incident): "
+            "Because no historical precedent exists in Hindsight memory, the agent divided the incident into isolated sub-components: "
+            "[1. Ingress Proxy]: 504 timeouts and 96% socket descriptor saturation (480/500 handles); "
+            "[2. Application Pods]: CPU nominal (18%), memory nominal (42%), worker threads blocked on synchronous socket wait; "
+            "[3. Downstream Dependencies]: DB & Redis latency <2ms, eliminating database deadlocks; "
+            "[4. Upstream Route]: Network keep-alive hold time >4,500ms. "
+            "Pattern Identified: Blocking is localized to upstream route transit latency rather than internal code regression. "
+            "Best Solution: Staged fallback gateway rail divert (50%) + read timeout clamp to restore throughput without release rollback."
+        )
+        root_cause = "Novel Upstream Gateway Degradation (Identified via Divide-and-Conquer component decomposition)"
+        contribution = {
+            "hindsightContributionPct": 0,
+            "currentIncidentDataPct": 75 if not req.enableWebResearch else 65,
+            "webEvidencePct": 25 if req.enableWebResearch else 0,
+            "explanation": "Cold-Start Mode: 0% Hindsight precedent available. 75% telemetry signal decomposition + first-principles pattern matching.",
+        }
+        confidence = "MEDIUM-HIGH (Divide-and-Conquer Verified)"
+    else:
+        primary_reasoning = (
+            "Both internal telemetry and Hindsight historical memory INC-1987 strongly converge on third-party payment partner route degradation. "
+            "Local application release rollback is NOT recommended as internal CPU and error rates are healthy."
+        )
+        root_cause = "Upstream Stripe acquiring bank network degradation inducing read socket timeouts that saturate checkout pod thread pools."
+        contribution = {
+            "hindsightContributionPct": 65,
+            "currentIncidentDataPct": 25,
+            "webEvidencePct": 10 if req.enableWebResearch else 0,
+            "explanation": "Hindsight historical experience provides 65% of the causal weight by matching verified past resolution path.",
+        }
+        confidence = "HIGH"
+
     analysis = {
         "id": f"ai-analysis-{uuid.uuid4().hex[:8]}",
         "incidentId": req.incidentId,
-        "incidentNumber": "INC-2048",
+        "incidentNumber": "INC-4544" if is_cold_start else "INC-2048",
         "analyzedAt": datetime.now(timezone.utc).isoformat(),
         "webResearchRequested": bool(req.enableWebResearch),
         "priorityOrder": [
@@ -1203,8 +1263,8 @@ def ai_analyze(req: AiAnalyzeReq):
             "3. Grounded Real-World Web Post-Mortems (Stripe, Cloudflare)",
         ],
         "currentIncidentData": {
-            "incidentNumber": "INC-2048",
-            "title": "Payment Gateway Timeout Cascade & Thread Exhaustion",
+            "incidentNumber": "INC-4544" if is_cold_start else "INC-2048",
+            "title": "Cold-Start Payment Routing Latency Spike" if is_cold_start else "Payment Gateway Timeout Cascade & Thread Exhaustion",
             "service": "Checkout API / Payment Gateway",
             "severity": "SEV-1",
             "description": "504 Gateway Timeouts on /v2/checkout/charge. Blast radius verified isolated to North America region.",
@@ -1216,21 +1276,7 @@ def ai_analyze(req: AiAnalyzeReq):
                 "Socket pool saturation at 480 / 500 connections (96%)",
             ],
         },
-        "hindsightMemory": {
-            "status": "FOUND",
-            "recalledIncidentId": matched_memory["incident_id"] if matched_memory else "INC-1987",
-            "recalledTitle": matched_memory["title"] if matched_memory else "Payment Gateway Timeout Cascade",
-            "similarityScore": 0.914,
-            "retainedExperienceRule": matched_memory.get("retained_experience_rule") if matched_memory else "",
-            "provenance": {
-                "sourceIncident": matched_memory.get("incident_id") if matched_memory else "INC-1987",
-                "date": matched_memory.get("retained_at") if matched_memory else "2024-08-14",
-                "verifiedOutcome": matched_memory.get("verified_outcome") if matched_memory else "",
-                "investigationPath": matched_memory.get("agent_investigation") if matched_memory else "",
-                "executedResponse": matched_memory.get("executed_response") if matched_memory else "",
-            },
-            "whyRecalled": "Socket timeouts mimicking internal locks with zero CPU spike matched upstream payment route degradation.",
-        },
+        "hindsightMemory": hindsight_memory_data,
         "webEvidence": {
             "enabled": bool(req.enableWebResearch),
             "sourcesConsulted": [
@@ -1267,15 +1313,10 @@ def ai_analyze(req: AiAnalyzeReq):
             ],
         },
         "synthesizedAnalysis": {
-            "primaryReasoning": "Both internal telemetry and Hindsight historical memory INC-1987 strongly converge on third-party payment partner route degradation. Local application release rollback is NOT recommended as internal CPU and error rates are healthy.",
-            "contributionBreakdown": {
-                "hindsightContributionPct": 65,
-                "currentIncidentDataPct": 25,
-                "webEvidencePct": 10,
-                "explanation": "Hindsight historical experience provides 65% of the causal weight by matching verified past resolution path.",
-            },
-            "rootCauseHypothesis": "Upstream Stripe acquiring bank network degradation inducing read socket timeouts that saturate checkout pod thread pools.",
-            "confidence": "HIGH",
+            "primaryReasoning": primary_reasoning,
+            "contributionBreakdown": contribution,
+            "rootCauseHypothesis": root_cause,
+            "confidence": confidence,
             "limitations": [
                 "External acquiring bank partner dashboard telemetries have a 60-second reporting delay.",
                 "Live network captures on secondary payment route show nominal latency.",
