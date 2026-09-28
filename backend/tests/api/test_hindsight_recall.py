@@ -471,8 +471,8 @@ def test_analyze_incident_recall_integration(client: TestClient, reset_memory_do
     assert create_res.status_code == 201
     inc_id = create_res.json()["id"]
 
-    # 3. Analyze incident
-    analyze_res = client.post(f"/api/incidents/{inc_id}/analyze")
+    # 3. Analyze incident up to recall stage
+    analyze_res = client.post(f"/api/incidents/{inc_id}/analyze", json={"stage": "recall"})
     assert analyze_res.status_code == 200
     analysis = analyze_res.json()
 
@@ -517,7 +517,7 @@ def test_analyze_incident_degraded_recall_handling(client: TestClient, reset_mem
 
     # Simulate Hindsight outage during analysis
     reset_memory_double.set_mode("unavailable")
-    analyze_res = client.post(f"/api/incidents/{inc_id}/analyze")
+    analyze_res = client.post(f"/api/incidents/{inc_id}/analyze", json={"stage": "recall"})
     assert analyze_res.status_code == 200
     analysis = analyze_res.json()
 

@@ -30,19 +30,25 @@ This document defines the formal HTTP API contract for:
 
 ## 2. Core Architectural Invariant: Reasoning Order (D-02)
 
-The system enforces the strict 4-stage reasoning sequence:
+The system enforces the strict 5-stage reasoning sequence:
 
 ```text
-INTERPRET  (Feature 3: TL-001 Current Incident Analyzer)
+INTERPRET  (Stage 1: Current Incident Analyzer)
    ↓
-RECALL     (Feature 4: TL-002 Hindsight Recall)
+RECALL     (Stage 2: Hindsight Recall)
    ↓
-COMPARE    (Feature 5: Historical Comparison)
+CONTEXT ASSEMBLY (Stage 3: Memory Context Categorization)
    ↓
-HYPOTHESIZE (Feature 5: Ranked Hypotheses with Precedent)
+COMPARE    (Stage 4: Current vs Historical Comparison)
+   ↓
+HYPOTHESIZE (Stage 5: Ranked Precedent-Backed Hypotheses)
 ```
 
-**Critical Rule:** The system does NOT generate root-cause hypotheses before Hindsight recall completes. At Stage 1, `hypotheses` is strictly empty.
+**Critical Invariants:**
+1. The system does NOT generate root-cause hypotheses before Hindsight recall completes.
+2. Anti-hallucination guarantee: The agent may ONLY claim historical facts that exist in recalled memory.
+3. Unknowns are explicitly declared when evidence is insufficient.
+4. Conflicting historical memories are surfaced, never silently suppressed.
 
 ---
 
@@ -178,8 +184,77 @@ Executes Stage 1 analysis (TL-001 Incident Analyzer). Uses the configured model 
       "DB_CONN_EXHAUSTION"
     ]
   },
-  "comparisons": [],
-  "hypotheses": [],
+  "comparisons": [
+    {
+      "prior_incident_id": "INC-2025-0042",
+      "entry_id": "mem-1a2b3c4d",
+      "matching_signals": [
+        "Matching service: payment-api",
+        "Symptom overlap on terms: connection, pool, exhaustion"
+      ],
+      "differences": [
+        "Recent changes: unknown in current evidence"
+      ],
+      "historical_patterns": [
+        "Prior root cause (INC-2025-0042): HikariCP connection leak during unclosed cursor in bulk checkout."
+      ],
+      "conflicts": [],
+      "confidence": {
+        "score": 0.88,
+        "level": "confirmed",
+        "basis": "Score 0.88 based on 2 matching signal(s), 1 difference(s), and 0 conflict(s)."
+      },
+      "provenance": [
+        {
+          "source": "current_incident",
+          "statement": "Current service is payment-api"
+        },
+        {
+          "source": "recalled_memory:mem-1a2b3c4d",
+          "statement": "Historical incident INC-2025-0042 occurred on service payment-api"
+        }
+      ],
+      "match_strength": "full",
+      "applicability": "applicable"
+    }
+  ],
+  "hypotheses": [
+    {
+      "hypothesis": "Candidate Cause: HikariCP connection leak during unclosed cursor in bulk checkout. (Precedent: INC-2025-0042)",
+      "supporting_current_evidence": [
+        "Service alignment: payment-api",
+        "Current failure mode: database_connection_exhaustion",
+        "Signal: Matching service: payment-api",
+        "Signal: Symptom overlap on terms: connection, pool, exhaustion"
+      ],
+      "supporting_memory_entries": [
+        "mem-1a2b3c4d"
+      ],
+      "contradicting_evidence": [],
+      "unknowns": [
+        "Exact database thread pool configuration.",
+        "unknown: Whether rollback or restart was previously attempted for this instance"
+      ],
+      "confidence": {
+        "score": 0.82,
+        "level": "confirmed",
+        "basis": "Precedent-backed by INC-2025-0042 (relevance 0.88). Supported by 4 current evidence item(s)."
+      },
+      "provenance": [
+        {
+          "source": "current_incident",
+          "statement": "Current symptoms: Payment API is failing due to database pool exhaustion."
+        },
+        {
+          "source": "recalled_memory:mem-1a2b3c4d",
+          "statement": "Historical precedent from INC-2025-0042: HikariCP connection leak during unclosed cursor in bulk checkout."
+        }
+      ],
+      "rank": 1,
+      "precedent_backed": true,
+      "status": "candidate"
+    }
+  ],
   "unknowns": [
     "Exact database thread pool configuration."
   ],

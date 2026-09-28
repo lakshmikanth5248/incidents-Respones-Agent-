@@ -99,6 +99,23 @@ This is the backend service for the Incident Response Agent, built in accordance
   * `POST /api/incidents/{id}/analyze` (API-005): Executes recall and links `recall_record` to incident & analysis.
   * `GET /api/incidents/{id}/memory` (API-007): Retrieves recalled memories and `recall_record`, with support for `entry_type`, `outcome_label`, and `relevance_min` query filters. Always returns 503 during outages.
 
+### Features 6–7 — Current/Historical Comparison and Hypothesis Generation
+* **Strict 5-Stage Reasoning Sequence:**
+  `Current analysis -> Hindsight recall -> Memory context assembly -> Comparison -> Hypothesis`
+* **Evidence Comparison Layer (FR-023–FR-028, AC2-04):**
+  * Compares current evidence (`current symptoms`, `current metrics`, `current logs`, `recent changes`, `current service`) against historical experience (`previous symptoms`, `previous failure mode`, `root cause`, `resolution`, `outcome`, `failed approaches`, `lessons`).
+  * Generates structured comparison items containing:
+    `matching_signals`, `differences`, `historical_patterns`, `conflicts`, `confidence`, `provenance`, `match_strength`, `applicability`.
+* **Hypothesis Formation Layer (FR-029–FR-034, AC2-05):**
+  * Generates structured candidate root-cause explanations containing:
+    `hypothesis`, `supporting_current_evidence`, `supporting_memory_entries`, `contradicting_evidence`, `unknowns`, `confidence`, `provenance`, `rank`, `precedent_backed`.
+* **Critical Anti-Hallucination Invariant:**
+  * The agent may ONLY claim historical facts that exist in the recalled memory set.
+  * If a memory does not contain a specific outcome (e.g. rollback), the agent does NOT claim rollback succeeded; missing items are explicitly declared as `unknown`.
+* **Conflict Surfacing (FR-027, AC2-04a, AC2-05b):**
+  * Disagreements across prior memories (e.g. differing causes for the same failure mode) or contradictions with current telemetry are surfaced in `conflicts` and `contradicting_evidence`, never silently reconciled.
+* **Deterministic Output:** All comparison match scores and hypothesis rankings are 100% reproducible.
+
 ---
 
 ## 3. Running Automated Tests
@@ -109,7 +126,7 @@ cd backend
 python -m pytest -v
 ```
 
-All 94 tests cover:
+All 103 tests cover:
 * Valid incident creation (201)
 * Request validation & secret scanning
 * Verbatim raw input preservation & normalization
@@ -145,7 +162,15 @@ All 94 tests cover:
 * Conflicting memories detection & cross-incident conflict notation
 * Empty memory handling (status=empty, 200 OK)
 * Hindsight outage handling (503 HINDSIGHT_UNAVAILABLE, never success + empty array)
-* Ranking determinism across repeated executions
 * Provenance preservation across the entire recall lifecycle
 * Analysis integration with Stage 2 recall and hypothesis invariant
+* Matching memory comparison & precedent-backed hypothesis generation
+* Cold-start / no-memory handling without memory fabrication
+* Contradictory memory and cross-incident conflict surfacing
+* Irrelevant memory handling and weak match grading
+* Anti-hallucination verification (unsupported historical claims prevented)
+* Missing evidence with explicit unknowns declaration
+* Structured confidence and provenance tracking
+* Deterministic comparison and hypothesis ranking across trials
+* Strict reasoning order halting points (interpret -> recall -> compare -> hypothesize)
 

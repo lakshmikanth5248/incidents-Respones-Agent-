@@ -108,10 +108,10 @@ class ReasoningService:
         # Case A: Cold-start / No relevant memory / Outage / Suppressed
         if memory_context.status != MemoryStatus.OK.value or not memory_context.entries:
             basis_msg = {
-                MemoryStatus.EMPTY.value: "No prior operational memory found for this service class (cold-start).",
+                MemoryStatus.EMPTY.value: "No prior operational memory found for this service class (cold-start / memory empty).",
                 MemoryStatus.SUPPRESSED.value: "Historical memory recall was deliberately suppressed (memory-isolated mode).",
                 MemoryStatus.DEGRADED.value: "Memory service was unavailable during analysis — operating in degraded mode.",
-            }.get(memory_context.status, "No historical memories available for comparison.")
+            }.get(memory_context.status, "No historical memories available for comparison (empty).")
 
             comparisons.append(ComparisonItem(
                 prior_incident_id=None,
